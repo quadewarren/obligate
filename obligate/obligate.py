@@ -12,11 +12,21 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from sqlalchemy.orm import sessionmaker
+
 from models import melange
-from quark.db import models
+
+#from quark.db import models
+
+
+def loadSession():
+    #metadata = Base.metadata
+    Session = sessionmaker(bind=melange.engine)
+    session = Session()
+    return session
 
 
 if __name__ == "__main__":
-    session = melange.loadSession()
+    session = loadSession()
     res = session.query(melange.Interfaces).all()
     print res[1].device_id
