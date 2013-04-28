@@ -1,0 +1,5 @@
+# Ignoring the following
+######################
+.venv
+build
+sqlwork
