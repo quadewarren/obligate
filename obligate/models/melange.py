@@ -14,93 +14,77 @@
 # limitations under the License.
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 
 
 engine = create_engine("mysql://root:password@localhost/melange", echo=True)
 Base = declarative_base(engine)
 
 
-class Interfaces(Base):
+class MelangeMixin(object):
+    """"""
+    __table_args__ = {'autoload': True}
+
+
+class Interfaces(MelangeMixin, Base):
     """"""
     __tablename__ = "interfaces"
-    __table_args__ = {'autoload': True}
 
 
-class AllocatableIPs:
+class AllocatableIPs(MelangeMixin, Base):
     """"""
     __tablename__ = "allocatable_ips"
-    __table_args__ = {'autoload': True}
 
 
-class AllocatableMacs:
+class AllocatableMacs(MelangeMixin, Base):
     """"""
     __tablename__ = "allocatable_macs"
-    __table_args__ = {'autoload': True}
 
 
-class AllowedIps:
+class AllowedIps(MelangeMixin, Base):
     """"""
     __tablename__ = "allowed_ips"
-    __table_args__ = {'autoload': True}
 
 
-class IpAddresses:
+class IpAddresses(MelangeMixin, Base):
     """"""
-    __tablename__ = "ip_address"
-    __table_args__ = {'autoload': True}
+    __tablename__ = "ip_addresses"
 
 
-class IpBlocks:
+class IpBlocks(MelangeMixin, Base):
     """"""
     __tablename__ = "ip_blocks"
-    __table_args__ = {'autoload': True}
 
 
-class IpNats:
+class IpNats(MelangeMixin, Base):
     """"""
     __tablename__ = "ip_nats"
-    __table_args__ = {'autoload': True}
 
 
-class IpOctets:
+class IpOctets(MelangeMixin, Base):
     """"""
     __tablename__ = "ip_octets"
-    __table_args__ = {'autoload': True}
 
 
-class IpRanges:
+class IpRanges(MelangeMixin, Base):
     """"""
     __tablename__ = "ip_ranges"
-    __table_args__ = {'autoload': True}
 
 
-class IpRoutes:
+class IpRoutes(MelangeMixin, Base):
     """"""
     __tablename__ = "ip_routes"
-    __table_args__ = {'autoload': True}
 
 
-class MacAddressRanges:
+class MacAddressRanges(MelangeMixin, Base):
     """"""
     __tablename__ = "mac_address_ranges"
-    __table_args__ = {'autoload': True}
 
 
-class MacAddresses:
+class MacAddresses(MelangeMixin, Base):
     """"""
     __tablename__ = "mac_addresses"
-    __table_args__ = {'autoload': True}
 
 
-class Policies:
+class Policies(MelangeMixin, Base):
     """"""
     __tablename__ = "policies"
-    __table_args__ = {'autoload': True}
-
-
-def loadSession():
-    #metadata = Base.metadata
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    return session
