@@ -1,0 +1,3 @@
+netaddr
+sqlalchemy
+mysql-python
