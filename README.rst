@@ -12,13 +12,13 @@ TL;DR:
 #. Clone the repo:
     ``git clone https://github.com/mpath/obligate.git && cd obligate``
 
-#. create a .venv for obligate:
+#. Create a .venv for obligate:
     ``mkvirtualenv obligate``
 
 #. Activate the .venv:
     ``workon obligate``
 
-#. install quark and neutron (as develop) inside the venv:
+#. Install quark and neutron (as develop) inside the venv:
     ``mkdir lib && cd lib``
     
     ``git clone https://github.com/openstack/neutron.git``
@@ -31,7 +31,7 @@ TL;DR:
     
     ``cd quark && python setup.py develop && cd ..``
 
-#. install the requirements:
+#. Install the requirements:
     ``pip install -r pip-requirements.txt``
 
 Usage
