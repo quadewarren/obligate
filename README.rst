@@ -1,5 +1,11 @@
+
 INSTALLATION
 ============
+TL;DR: 
+    ``git clone https://github.com/mpath/obligate.git&&cd obligate&&mkvirtualenv obligate&&workon obligate&&mkdir lib&&cd lib&&git clone https://github.com/openstack/neutron.git&&cd neutron&&python setup.py develop&&cd ..&&git clone https://github.com/jkoelker/quark.git&&cd quark&&python setup.py develop&&pip install -r pip-requirements.txt``
+
+============
+    
 #. Clone the repo:
     ``git clone https://github.com/mpath/obligate.git && cd obligate``
 
@@ -10,7 +16,17 @@ INSTALLATION
     ``workon obligate``
 
 #. install quark and neutron (as develop) inside the venv:
-    ``python setup.py develop``
+    ``mkdir lib && cd lib``
+    
+    ``git clone https://github.com/openstack/neutron.git``
+    
+    ``cd neutron && python setup.py develop``
+    
+    ``cd ..``
+    
+    ``git clone https://github.com/jkoelker/quark.git``
+    
+    ``cd quark && python setup.py develop``
 
 #. install the requirements:
     ``pip install -r pip-requirements.txt``
