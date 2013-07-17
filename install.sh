@@ -1,5 +1,3 @@
-git clone https://github.com/roaet/obligate.git
-cd obligate
 mkvirtualenv obligate
 workon obligate
 mkdir lib
