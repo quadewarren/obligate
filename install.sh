@@ -1,5 +1,5 @@
-mkvirtualenv obligate
-workon obligate
+virtualenv --prompt='(obligate)' --distribute --no-site-packages .venv
+source .venv/bin/activate
 mkdir lib
 cd lib
 git clone https://github.com/openstack/neutron.git
