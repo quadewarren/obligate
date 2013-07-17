@@ -34,10 +34,6 @@ TL;DR:
 #. install the requirements:
     ``pip install -r pip-requirements.txt``
 
-#. *???*
-
-#. **Profit.**
-
 Usage
 =====
     ``python obligate.py``
