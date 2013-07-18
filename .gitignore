@@ -2,6 +2,7 @@
 ######################
 .venv
 *.pyc
+*.swp
 build
 sqlwork
 lib/
