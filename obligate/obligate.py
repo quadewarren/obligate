@@ -35,9 +35,7 @@ class Obligator(object):
         self.interface_network = dict()
         self.interface_ip = dict()
         self.port_cache = dict()
-        # self.q_network_cache = []
         self.policy_ids = dict()
-        self.q_subnet_cache = []
         self.session = session
 
     def flush_db(self):
@@ -93,6 +91,7 @@ class Obligator(object):
                                             tenant_id=networks[net]["tenant_id"],  # noqa
                                             name=networks[net]["name"])
             self.session.add(q_network)
+        blocks_without_policy = 0
         for block in blocks:
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=block.network_id,
@@ -107,7 +106,9 @@ class Obligator(object):
                 self.policy_ids[block.policy_id].append(block.id)
             else:
                 print "Found block without a policy: ", block.id
-        print "Cached {0} policy_ids.".format(len(self.policy_ids))
+                blocks_without_policy += 1
+        print "Cached {0} policy_ids, {1} blocks found without policy.".\
+            format(len(self.policy_ids), blocks_without_policy)
 
     def migrate_routes(self, block=None):
         routes = self.session.query(melange.IpRoutes)\
@@ -281,13 +282,13 @@ class Obligator(object):
 
         print "warn :skipped " + str(no_network_count) + " mac addresses"
 
-    def _octet_to_cidr(self, octet, compat=False):
+    def _octet_to_cidr(self, octet, ipv4_compatible=False):
         """
         Convert an ip octet to a ipv6 cidr
-        If ipv4 compatibility is desired, pass compat as True
         """
         ipnet = netaddr.IPNetwork(
-            netaddr.cidr_abbrev_to_verbose(octet)).ipv6(ipv4_compatible=compat)
+            netaddr.cidr_abbrev_to_verbose(octet)).ipv6(
+                ipv4_compatible=ipv4_compatible)
         return str(ipnet.ip)
 
     def migrate_policies(self):
@@ -303,7 +304,6 @@ class Obligator(object):
         * A rule (IPPolicy.exclude) are CIDRs to *EXCLUDE* from allocation
         * IPOctets/IPRanges policy_id must be non-null
         """
-        print
         octets = melange.IpOctets
         ranges = melange.IpRanges
         for policy, policy_block_ids in self.policy_ids.items():
@@ -322,7 +322,7 @@ class Obligator(object):
                                                          policy_range.length)
             # self.session.add(subn)
         print
-        print "Policies not migrated, awaiting clarification... TODO"
+        print "warn :Policies not migrated, awaiting clarification... TODO"
 
     def migrate_commit(self):
         """4. Commit the changes to the database"""
