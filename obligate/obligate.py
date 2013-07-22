@@ -23,6 +23,8 @@ from quark.db import models as quarkmodels
 
 import logging as log
 import sys
+import os
+
 log_format = "{} {}\t{}\t{}".format('%(asctime)s',
                                     '%(levelname)s',
                                     '%(funcName)s',
@@ -31,6 +33,9 @@ log_dateformat = '%m/%d/%Y %I:%M:%S %p'
 file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
 now = datetime.datetime.now()
 filename_format = 'logs/obligate.{}.log'.format(now.strftime(file_timeformat))
+# create the logs directory if it doesn't exist
+if not os.path.exists('logs'):
+    os.makedirs('logs')
 log.basicConfig(format=log_format,
                 datefmt=log_dateformat,
                 filename=filename_format,
