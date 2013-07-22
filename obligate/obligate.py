@@ -12,7 +12,6 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import netaddr
 import datetime
 import time
@@ -27,8 +26,8 @@ now = datetime.datetime.now()
 log.basicConfig(format='%(asctime)s\t\t%(levelname)s\t%(message)s',
                 datefmt='%m/%d/%Y %I:%M:%S %p',
                 filename='logs/obligate.{}.log'.format(
-                    now.strftime("%A-%d-%B-%Y-%I:%M%p")),
-                filemode='a',
+                    now.strftime("%A-%d-%B-%Y--%I.%M.%S.%p")),
+                filemode='w',
                 level=log.DEBUG)
 
 
