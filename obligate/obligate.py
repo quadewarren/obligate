@@ -363,14 +363,14 @@ class Obligator(object):
         totes = 0.0
         totes += self.do_and_time("migrate networks, subnets, routes, and ips",  # noqa
                                   self.migrate_networks)
-        totes += self.do_and_time("migrate ports",
-                                  self.migrate_interfaces)
-        totes += self.do_and_time("associating ips with ports",
-                                  self.associate_ips_with_ports)
-        totes += self.do_and_time("migrate macs and ranges",
-                                  self.migrate_macs)
-        totes += self.do_and_time("migrate policies",
-                                  self.migrate_policies)
+        #totes += self.do_and_time("migrate ports",
+        #                          self.migrate_interfaces)
+        #totes += self.do_and_time("associating ips with ports",
+        #                          self.associate_ips_with_ports)
+        #totes += self.do_and_time("migrate macs and ranges",
+        #                          self.migrate_macs)
+        #totes += self.do_and_time("migrate policies",
+        #                          self.migrate_policies)
         totes += self.do_and_time("commit changes",
                                   self.migrate_commit)
         log.info("TOTAL: {0} seconds.".format(str(totes)))

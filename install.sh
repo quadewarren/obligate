@@ -49,4 +49,3 @@ setup_lib_directory
 get_neutron
 get_quark
 pip_install
-echo 'Obligate installed ok.'
