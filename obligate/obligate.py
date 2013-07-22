@@ -386,7 +386,6 @@ class Obligator(object):
 
 
 if __name__ == "__main__":
-    log.debug("__name__ == '__main__'... starting migration.")
     session = loadSession()
     log.debug("session loaded.")
     migration = Obligator(session)
