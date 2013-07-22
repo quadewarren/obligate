@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: Refactor print() => logging
 import netaddr
+import datetime
 import time
 
 from sqlalchemy.orm import sessionmaker
@@ -22,16 +22,28 @@ from sqlalchemy.orm import sessionmaker
 from models import melange
 from quark.db import models as quarkmodels
 
+import logging as log
+now = datetime.datetime.now()
+log.basicConfig(format='%(asctime)s\t\t%(levelname)s\t%(message)s',
+                datefmt='%m/%d/%Y %I:%M:%S %p',
+                filename='obligate.{}.log'.format(
+                    now.strftime("%A-%d-%B-%Y-%I:%M%p")),
+                filemode='a',
+                level=log.DEBUG)
+
 
 def loadSession():
     #metadata = Base.metadata
+    log.debug("Connecting to database via sqlalchemy.")
     Session = sessionmaker(bind=melange.engine)
     session = Session()
+    log.debug("Connected to database.")
     return session
 
 
 class Obligator(object):
     def __init__(self, session=None):
+        log.debug("Creating Obligator instance.")
         self.interface_tenant = dict()
         self.interfaces = dict()
         self.interface_network = dict()
@@ -39,29 +51,34 @@ class Obligator(object):
         self.port_cache = dict()
         self.policy_ids = dict()
         self.session = session
+        if not self.session:
+            log.warning("No session created when initializing Obligator.")
+        log.debug("Obligator ready.")
 
     def flush_db(self):
+        log.debug("flush_db() called: drop/create imminent.")
         quarkmodels.BASEV2.metadata.drop_all(melange.engine)
+        log.debug("flush_db() -> drop_all complete")
         quarkmodels.BASEV2.metadata.create_all(melange.engine)
+        log.debug("flush_db() -> create_all complete.")
 
-    def do_and_time_quietly(self, label, fx, **kwargs):
-        self.do_and_time(label, fx, True, **kwargs)
+    # def do_and_time_quietly(self, label, fx, **kwargs):
+    #    self.do_and_time(label, fx, True, **kwargs)
 
-    def do_and_time(self, label, fx, quiet=False, **kwargs):
+    def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
-        if not quiet:
-            print "start:" + label
+        # if not quiet:
+        log.info("start: {0}".format(label))
         try:
             fx(**kwargs)
         except Exception as e:
-            print "Error during " + label
+            log.critical("Error during {0}:{1}".format(label, e.message))
             raise e
         end_time = time.time()
-        if not quiet:
-            print "end  :" + label
-        if not quiet:
-            print "delta:" + label + " = " +\
-                str(end_time - start_time) + " seconds"
+        # if not quiet:
+        log.info("end  : {0}".format(label))
+        #if not quiet:
+        log.info("delta: {0} = {1} seconds".format(label, str(end_time - start_time)))  # noqa
         return end_time - start_time
 
     def migrate_networks(self):
@@ -75,6 +92,7 @@ class Obligator(object):
         An ip_block has a cidr which maps to a corresponding subnet
         in quark.
         """
+        log.debug("migrate_networks() called: network migration imminent.")
         blocks = self.session.query(melange.IpBlocks).all()
         networks = dict()
         """Create the networks using the network_id. It is assumed that
@@ -86,7 +104,8 @@ class Obligator(object):
                     "name": block.network_name,
                 }
             elif networks[block.network_id]["tenant_id"] != block.tenant_id:
-                print "Found different tenant on network. wtf"
+                log.critical("Found different tenant on network:{0} != {1}"
+                             .format(networks[block.network_id]["tenant_id"], block.tenant_id))  # noqa
                 raise Exception
         for net in networks:
             q_network = quarkmodels.Network(id=net,
@@ -107,12 +126,14 @@ class Obligator(object):
                     self.policy_ids[block.policy_id] = list()
                 self.policy_ids[block.policy_id].append(block.id)
             else:
-                print "Found block without a policy: ", block.id
+                log.warning("Found block without a policy: {0}".format(block.id))  # noqa
                 blocks_without_policy += 1
-        print "Cached {0} policy_ids, {1} blocks found without policy.".\
-            format(len(self.policy_ids), blocks_without_policy)
+        log.info("Cached {0} policy_ids. {1} blocks found without policy."
+                 .format(len(self.policy_ids), blocks_without_policy))
+        log.debug("migrate_networks() complete.")
 
     def migrate_routes(self, block=None):
+        log.debug("migrate_routes() called: route migration imminent.")
         routes = self.session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
@@ -123,6 +144,7 @@ class Obligator(object):
                                         created_at=block.created_at,
                                         subnet_id=block.id)
             self.session.add(q_route)
+        log.debug("migrate_routes() complete.")
 
     def migrate_ips(self, block=None):
         """3. Migrate m.ip_addresses -> q.quark_ip_addresses
@@ -136,6 +158,7 @@ class Obligator(object):
         then be possible to create a q.subnet connected to the network.
 
         """
+        log.debug("migrate_ips() called: ip migration imminent.")
         addresses = self.session.query(melange.IpAddresses)\
             .filter_by(ip_block_id=block.id).all()
         for address in addresses:
@@ -146,8 +169,7 @@ class Obligator(object):
                 self.interface_network[interface] = block.network_id
             if interface in self.interface_network and\
                     self.interface_network[interface] != block.network_id:
-                print "Found interface with different network id: " +\
-                    block.network_id
+                log.error("Found interface with different network id: {0} != {1}".format(self.interface_network[interface], block.network_id))  # noqa
             deallocated = False
             deallocated_at = None
             """If marked for deallocation put it into the quark ip table
@@ -176,8 +198,10 @@ class Obligator(object):
             self.interface_ip[interface].add(q_ip)
 
             self.session.add(q_ip)
+        log.debug("migrate_ips() complete.")
 
     def migrate_interfaces(self):
+        log.debug("migrate_interfaces() called: interface migration imminent.")
         interfaces = self.session.query(melange.Interfaces).all()
         no_network_count = 0
         for interface in interfaces:
@@ -194,16 +218,20 @@ class Obligator(object):
                                       network_id=network_id)
             self.port_cache[interface.id] = q_port
             self.session.add(q_port)
-        print "warn :Found " + str(no_network_count) +\
-            " interfaces with no network"
+        log.info("Found {0} interfaces without a network.".format(str(no_network_count)))  # noqa
+        log.debug("migrate_interfaces() complete.")
 
     def associate_ips_with_ports(self):
+        log.debug("associate_ips_with_ports() called: ip <=> port association imminent.")  # noqa
         for port in self.port_cache:
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
                 q_port.ip_addresses.append(ip)
+        log.debug("associate_ips_with_ports() complete.")
 
     def migrate_allocatable_ips(self, block=None):
+        log.debug("migrate_allocatable_ips() called: "
+                  "allocatable ip migration imminent.")
         addresses = self.session.query(melange.AllocatableIPs)\
             .filter_by(ip_block_id=block.id).all()
         for address in addresses:
@@ -223,6 +251,7 @@ class Obligator(object):
                                          _deallocated=True,
                                          address=int(ip))
             self.session.add(q_ip)
+        log.debug("migrate_allocatable_ips() complete.")
 
     def _to_mac_range(self, val):
         cidr_parts = val.split("/")
@@ -231,7 +260,9 @@ class Obligator(object):
         prefix = prefix.replace('-', '')
         prefix_length = len(prefix)
         if prefix_length < 6 or prefix_length > 10:
-            pass
+            log.warning("{0} prefix_length < 6 or prefix_length > 10."
+                        " (prefix_length = {1})"
+                        .format(val, prefix_length))
             #raise quark_exceptions.InvalidMacAddressRange(cidr=val)
 
         diff = 12 - len(prefix)
@@ -243,8 +274,9 @@ class Obligator(object):
         prefix = "%s%s" % (prefix, "0" * diff)
         try:
             cidr = "%s/%s" % (str(netaddr.EUI(prefix)).replace("-", ":"), mask)
-        except netaddr.AddrFormatError:
-            pass
+        except netaddr.AddrFormatError as e:
+            log.warning("{0} raised netaddr.AddrFormatError: {1}... ignoring."
+                        .format(prefix, e.message))
             #raise quark_exceptions.InvalidMacAddressRange(cidr=val)
         prefix_int = int(prefix, base=16)
         return cidr, prefix_int, prefix_int + mask_size
@@ -255,6 +287,7 @@ class Obligator(object):
         and quark_mac_addresses may be complicated to set up (if it exists)
         """
         """Only migrating the first mac_address_range from melange."""
+        log.debug("migrate_macs() called: mac migration imminent.")
         mac_range = self.session.query(melange.MacAddressRanges).first()
         cidr = mac_range.cidr
         cidr, first_address, last_address = self._to_mac_range(cidr)
@@ -272,6 +305,8 @@ class Obligator(object):
         for mac in res:
             if mac.interface_id not in self.interface_network:
                 no_network_count += 1
+                log.info("mac.interface_id {0} not in self.interface_network"
+                         .format(mac.interface_id))
                 continue
             tenant_id = self.interface_tenant[mac.interface_id]
             q_mac = quarkmodels.MacAddress(tenant_id=tenant_id,
@@ -281,8 +316,8 @@ class Obligator(object):
             q_port = self.port_cache[mac.interface_id]
             q_port.mac_address = q_mac.address
             self.session.add(q_mac)
-
-        print "warn :skipped " + str(no_network_count) + " mac addresses"
+        log.info("skipped {0} mac addresses".format(str(no_network_count)))
+        log.debug("migrate_macs() complete.")
 
     def _octet_to_cidr(self, octet, ipv4_compatible=False):
         """
@@ -306,35 +341,40 @@ class Obligator(object):
         * A rule (IPPolicy.exclude) are CIDRs to *EXCLUDE* from allocation
         * IPOctets/IPRanges policy_id must be non-null
         """
+        log.debug("migrate_policies() called: policy migration imminent.")
         octets = melange.IpOctets
         ranges = melange.IpRanges
         for policy, policy_block_ids in self.policy_ids.items():
-            print "Migrate policy.id", policy
-            print "\tblock.ids", policy_block_ids
+            log.debug("Migrate policy.id {0} => "
+                      "block ids: {1}".format(policy, policy_block_ids))
             policy_octets = self.session.query(octets).\
                 filter(octets.policy_id == policy).all()
             policy_ranges = self.session.query(ranges).\
                 filter(ranges.policy_id == policy).all()
             if policy_octets:
                 for policy_octet in policy_octets:
-                    print "\toctet: {}".format(policy_octet.octet)
+                    log.debug("octet: {}".format(policy_octet.octet))
             if policy_ranges:
                 for policy_range in policy_ranges:
-                    print "\toffset:{} length:{}".format(policy_range.offset,
-                                                         policy_range.length)
+                    log.debug("offset:{} length:{}"
+                              .format(policy_range.offset,
+                                      policy_range.length))
             # self.session.add(subn)
-        print
-        print "warn :Policies not migrated, awaiting clarification... TODO"
+        log.warning("Policies not migrated, awaiting clarification... TODO")
+        log.debug("migrate_policies() complete.")
 
     def migrate_commit(self):
         """4. Commit the changes to the database"""
+        log.debug("migrate_commit() called: session.commit() imminent.")
         self.session.commit()
+        log.debug("migrate_commit() complete.")
 
     def migrate(self):
         """
         This will migrate an existing melange database to a new quark
         database. Below melange is referred to as m and quark as q.
         """
+        log.debug("migrate() called...")
         totes = 0.0
         totes += self.do_and_time("migrate networks, subnets, routes, and ips",  # noqa
                                   self.migrate_networks)
@@ -348,12 +388,17 @@ class Obligator(object):
                                   self.migrate_policies)
         totes += self.do_and_time("commit changes",
                                   self.migrate_commit)
-        print "Total: " + str(totes) + " seconds"
-        exit(0)
+        log.info("TOTAL: {0} seconds.".format(str(totes)))
+        log.debug("migrate() complete.")
 
 
 if __name__ == "__main__":
+    log.debug("__name__ == '__main__'... starting migration.")
     session = loadSession()
+    log.debug("session loaded.")
     migration = Obligator(session)
+    log.debug("Obligator instance ready.")
     migration.flush_db()
+    log.debug("Obligator flushed database.")
     migration.migrate()
+    log.debug("Migration complete: exiting.")
