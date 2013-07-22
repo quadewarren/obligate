@@ -62,12 +62,8 @@ class Obligator(object):
         quarkmodels.BASEV2.metadata.create_all(melange.engine)
         log.debug("flush_db() -> create_all complete.")
 
-    # def do_and_time_quietly(self, label, fx, **kwargs):
-    #    self.do_and_time(label, fx, True, **kwargs)
-
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
-        # if not quiet:
         log.info("start: {0}".format(label))
         try:
             fx(**kwargs)
@@ -75,9 +71,7 @@ class Obligator(object):
             log.critical("Error during {0}:{1}".format(label, e.message))
             raise e
         end_time = time.time()
-        # if not quiet:
         log.info("end  : {0}".format(label))
-        #if not quiet:
         log.info("delta: {0} = {1} seconds".format(label, str(end_time - start_time)))  # noqa
         return end_time - start_time
 
