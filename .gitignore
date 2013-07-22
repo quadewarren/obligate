@@ -7,3 +7,4 @@ build
 sqlwork
 lib/
 prod_*
+*.log

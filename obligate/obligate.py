@@ -26,7 +26,7 @@ import logging as log
 now = datetime.datetime.now()
 log.basicConfig(format='%(asctime)s\t\t%(levelname)s\t%(message)s',
                 datefmt='%m/%d/%Y %I:%M:%S %p',
-                filename='obligate.{}.log'.format(
+                filename='logs/obligate.{}.log'.format(
                     now.strftime("%A-%d-%B-%Y-%I:%M%p")),
                 filemode='a',
                 level=log.DEBUG)
