@@ -336,25 +336,83 @@ class Obligator(object):
         * A rule (IPPolicy.exclude) are CIDRs to *EXCLUDE* from allocation
         * IPOctets/IPRanges policy_id must be non-null
         """
+        possible = 0
+        covered = 0
         octets = melange.IpOctets
         ranges = melange.IpRanges
+        blocks = melange.IpBlocks
+        # these cover 99% of the policies currently:
+        # version: ipv4
+        # offset: -1
+        # length: 3
+        # This creates a policy encompassing .0, .1, and .255
+        # In melange, this was a policy with just offset:0 length:1
+        # If there is only policy octet: 0, same thing.
+        q_defaults = (4, -1, 3)
         for policy, policy_block_ids in self.policy_ids.items():
-            log.debug("Migrate policy.id {0} => "
-                      "block ids: {1}".format(policy, policy_block_ids))
+            possible += 1
+            octet_list = list()
+            range_list = list()
+            block_dict = dict()
+            # log.debug("Migrate policy.id {0} => "
+            #           "block ids: {1}".format(policy, policy_block_ids))
             policy_octets = self.session.query(octets).\
                 filter(octets.policy_id == policy).all()
+            for policy_block_id in policy_block_ids:
+                block = self.session.query(blocks).\
+                    filter(blocks.id == policy_block_id).all()
+                for b in block:
+                    # log.debug("block:{0} => cidr: {1}".format(b.id, b.cidr))
+                    block_dict.update({b.id: b.cidr})
+                # log.debug("block id: {0} => cidr: {1}".format(block.id,
+                #                                              block.cidr))
             policy_ranges = self.session.query(ranges).\
                 filter(ranges.policy_id == policy).all()
             if policy_octets:
                 for policy_octet in policy_octets:
-                    log.debug("octet: {}".format(policy_octet.octet))
+                    octet_list.append(policy_octet.octet)
+                    # clearly there can be more than one.
+                    # log.debug("octet: {0}".format(policy_octet.octet))
             if policy_ranges:
                 for policy_range in policy_ranges:
-                    log.debug("offset:{} length:{}"
-                              .format(policy_range.offset,
-                                      policy_range.length))
+                    range_list.append((policy_range.offset,
+                                       policy_range.length))
+                    # there can be more than one range as well
+                    # log.debug("offset:{0} length:{1}"
+                    #           .format(policy_range.offset,
+                    #                   policy_range.length))
+
+            q_version = None
+            q_offset = None
+            q_length = None
+            if (octet_list == [0] and not range_list) or\
+                    (range_list == [(0, 1)] and not octet_list):
+                q_version, q_offset, q_length = q_defaults
+                covered += 1.0
+            else:
+                q_offset, q_length = self._combine_range_octet(octet_list,
+                                                               range_list)
+                covered += 1.0
+            log.debug("Migrating policy: policy_id {0} =>"
+                      "version {1} offset {2} length {3} =>"
+                      "blocks/cidrs: {4}"
+                      .format(policy,
+                              q_version,
+                              q_offset,
+                              q_length,
+                              block_dict))
             # self.session.add(subn)
+        log.debug("Policies covered in migration: {0}"
+                  .format((covered/possible)*100))
         log.warning("Policies not migrated, awaiting clarification... TODO")
+
+    def _combine_range_octet(self, octets, ranges):
+        offset = None
+        length = None
+        total_length = None  # TODO TODO TODO XXX
+        total_length
+        log.critical("octets: {0} ranges: {1}".format(octets, ranges))
+        return offset, length
 
     def migrate_commit(self):
         """4. Commit the changes to the database"""
