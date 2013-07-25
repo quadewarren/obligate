@@ -114,7 +114,8 @@ class Obligator(object):
                 }
             elif networks[block.network_id]["tenant_id"] != block.tenant_id:
                 log.critical("Found different tenant on network:{0} != {1}"
-                             .format(networks[block.network_id]["tenant_id"], block.tenant_id))  # noqa
+                             .format(networks[block.network_id]["tenant_id"],
+                                     block.tenant_id))
                 raise Exception
         for net in networks:
             q_network = quarkmodels.Network(id=net,
@@ -135,7 +136,8 @@ class Obligator(object):
                     self.policy_ids[block.policy_id] = list()
                 self.policy_ids[block.policy_id].append(block.id)
             else:
-                log.warning("Found block without a policy: {0}".format(block.id))  # noqa
+                log.warning("Found block without a policy: {0}"
+                            .format(block.id))
                 blocks_without_policy += 1
         log.info("Cached {0} policy_ids. {1} blocks found without policy."
                  .format(len(self.policy_ids), blocks_without_policy))
@@ -174,7 +176,10 @@ class Obligator(object):
                 self.interface_network[interface] = block.network_id
             if interface in self.interface_network and\
                     self.interface_network[interface] != block.network_id:
-                log.error("Found interface with different network id: {0} != {1}".format(self.interface_network[interface], block.network_id))  # noqa
+                log.error("Found interface with different "
+                          "network id: {0} != {1}"
+                          .format(self.interface_network[interface],
+                                  block.network_id))
             deallocated = False
             deallocated_at = None
             """If marked for deallocation put it into the quark ip table
@@ -221,7 +226,8 @@ class Obligator(object):
                                       network_id=network_id)
             self.port_cache[interface.id] = q_port
             self.session.add(q_port)
-        log.info("Found {0} interfaces without a network.".format(str(no_network_count)))  # noqa
+        log.info("Found {0} interfaces without a network."
+                 .format(str(no_network_count)))
 
     def associate_ips_with_ports(self):
         for port in self.port_cache:
@@ -325,16 +331,24 @@ class Obligator(object):
 
     def migrate_policies(self):
         """
-        Migrate the IpOctets/IPRanges with a policy id by first converting to
-        CIDRs and then migrating them over.
-
-        Rules:
-        * IPOctets and IPRanges must be converted to CIDRs prior to migration
-        * Only one policy allowed per network
-        * Only one policy allowed per subnet
-        * Subnet policies take precedence over network policies in software
-        * A rule (IPPolicy.exclude) are CIDRs to *EXCLUDE* from allocation
-        * IPOctets/IPRanges policy_id must be non-null
+        Migrate melange policies to quark ip policies
+            * Only one policy allowed per network
+            * Only one policy allowed per subnet
+            * Subnet policies take precedence over network policies in software
+        ==== STEPS: ====
+        1. get a block (including cidr, id, etc)
+        2. get the blocks policy
+        3. get the policy ip_octets and/or ip_ranges (possibly many)
+        4. convert the block.cidr (if ipv4) to ipv6
+        5. convert the octet(s) to range(s)
+        6. if there are ranges and octets, simplify the policies
+        7. determine if the block is a subnet or a network
+        8. for every new policy:
+            8.1. create a new quark_ip_policy
+            8.2. for every new range:
+                8.2.1. create a new quark_ip_policy_range
+            8.3. associate the policy_range with the policy
+            8.4 associate the policy with the network or subnet
         """
         possible = 0
         covered = 0
@@ -435,7 +449,7 @@ class Obligator(object):
         database. Below melange is referred to as m and quark as q.
         """
         totes = 0.0
-        totes += self.do_and_time("migrate networks, subnets, routes, and ips",  # noqa
+        totes += self.do_and_time("migrate networks, subnets, routes, and ips",
                                   self.migrate_networks)
         totes += self.do_and_time("migrate ports",
                                   self.migrate_interfaces)
