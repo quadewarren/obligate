@@ -348,71 +348,82 @@ class Obligator(object):
         # This creates a policy encompassing .0, .1, and .255
         # In melange, this was a policy with just offset:0 length:1
         # If there is only policy octet: 0, same thing.
-        q_defaults = (4, -1, 3)
+        q_default_offset = -1
+        q_default_length = 3
         for policy, policy_block_ids in self.policy_ids.items():
-            possible += 1
             octet_list = list()
             range_list = list()
             block_dict = dict()
-            # log.debug("Migrate policy.id {0} => "
-            #           "block ids: {1}".format(policy, policy_block_ids))
             policy_octets = self.session.query(octets).\
                 filter(octets.policy_id == policy).all()
             for policy_block_id in policy_block_ids:
                 block = self.session.query(blocks).\
                     filter(blocks.id == policy_block_id).all()
                 for b in block:
-                    # log.debug("block:{0} => cidr: {1}".format(b.id, b.cidr))
                     block_dict.update({b.id: b.cidr})
-                # log.debug("block id: {0} => cidr: {1}".format(block.id,
-                #                                              block.cidr))
             policy_ranges = self.session.query(ranges).\
                 filter(ranges.policy_id == policy).all()
             if policy_octets:
                 for policy_octet in policy_octets:
                     octet_list.append(policy_octet.octet)
-                    # clearly there can be more than one.
-                    # log.debug("octet: {0}".format(policy_octet.octet))
             if policy_ranges:
                 for policy_range in policy_ranges:
                     range_list.append((policy_range.offset,
                                        policy_range.length))
-                    # there can be more than one range as well
-                    # log.debug("offset:{0} length:{1}"
-                    #           .format(policy_range.offset,
-                    #                   policy_range.length))
+            for block_id, block_cidr in block_dict.items():
+                possible += 1
+                other_version_cidr = None
+                q_version = None
+                q_offset = None
+                q_length = None
+                # ipv6 has :'s, v4 doesn't.
+                if ':' in block_cidr:
+                    q_version = 6
+                else:
+                    q_version = 4
+                try:
+                    if q_version == 6:
+                        other_version_cidr = str(netaddr
+                                                 .IPNetwork(block_cidr).ipv4())
+                    else:
+                        other_version_cidr = str(netaddr
+                                                 .IPNetwork(block_cidr).ipv6())
+                except:
+                    log.error("Couldn't convert cidr {0}".format(block_cidr))
 
-            q_version = None
-            q_offset = None
-            q_length = None
-            if (octet_list == [0] and not range_list) or\
-                    (range_list == [(0, 1)] and not octet_list):
-                q_version, q_offset, q_length = q_defaults
-                covered += 1.0
-            else:
-                q_offset, q_length = self._combine_range_octet(octet_list,
-                                                               range_list)
-                covered += 1.0
-            log.debug("Migrating policy: policy_id {0} =>"
-                      "version {1} offset {2} length {3} =>"
-                      "blocks/cidrs: {4}"
-                      .format(policy,
-                              q_version,
-                              q_offset,
-                              q_length,
-                              block_dict))
-            # self.session.add(subn)
+                if (octet_list == [0] and not range_list) or\
+                        (range_list == [(0, 1)] and not octet_list):
+                    # default range stuff
+                    q_offset, q_length = q_default_offset, q_default_length
+                    covered += 1.0
+                    continue
+                elif range_list and not octet_list:
+                    for range_pair in range_list:
+                        if range_pair[0] * -1 == range_pair[1]:
+                            q_offset = range_pair[0]
+                            q_length = range_pair[1]
+                            covered += 1
+                            break
+                elif octet_list and not range_list:
+                    for octet in octet_list:
+                        pass  # TODO do something with octets
+                        # they literally abused octets
+                log.debug("Migrating policy: policy_id {0}\n"
+                          "\tversion {1}, offset {2}, length {3}\n"
+                          "\tblock_id: {4}\n"
+                          "\tblock cidr: {5}\n"
+                          "\tother cidr: {6}\n"
+                          .format(policy,
+                                  q_version,
+                                  q_offset,
+                                  q_length,
+                                  block_id,
+                                  block_cidr,
+                                  other_version_cidr))
+                # self.session.add(subn)
         log.debug("Policies covered in migration: {0}"
                   .format((covered/possible)*100))
         log.warning("Policies not migrated, awaiting clarification... TODO")
-
-    def _combine_range_octet(self, octets, ranges):
-        offset = None
-        length = None
-        total_length = None  # TODO TODO TODO XXX
-        total_length
-        log.critical("octets: {0} ranges: {1}".format(octets, ranges))
-        return offset, length
 
     def migrate_commit(self):
         """4. Commit the changes to the database"""
