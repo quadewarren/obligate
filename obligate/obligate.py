@@ -114,7 +114,8 @@ class Obligator(object):
                 }
             elif networks[block.network_id]["tenant_id"] != block.tenant_id:
                 log.critical("Found different tenant on network:{0} != {1}"
-                             .format(networks[block.network_id]["tenant_id"], block.tenant_id))  # noqa
+                             .format(networks[block.network_id]["tenant_id"],
+                                     block.tenant_id))
                 raise Exception
         for net in networks:
             q_network = quarkmodels.Network(id=net,
@@ -135,7 +136,8 @@ class Obligator(object):
                     self.policy_ids[block.policy_id] = list()
                 self.policy_ids[block.policy_id].append(block.id)
             else:
-                log.warning("Found block without a policy: {0}".format(block.id))  # noqa
+                log.warning("Found block without a policy: {0}"
+                            .format(block.id))
                 blocks_without_policy += 1
         log.info("Cached {0} policy_ids. {1} blocks found without policy."
                  .format(len(self.policy_ids), blocks_without_policy))
@@ -174,7 +176,10 @@ class Obligator(object):
                 self.interface_network[interface] = block.network_id
             if interface in self.interface_network and\
                     self.interface_network[interface] != block.network_id:
-                log.error("Found interface with different network id: {0} != {1}".format(self.interface_network[interface], block.network_id))  # noqa
+                log.error("Found interface with different "
+                          "network id: {0} != {1}"
+                          .format(self.interface_network[interface],
+                                  block.network_id))
             deallocated = False
             deallocated_at = None
             """If marked for deallocation put it into the quark ip table
@@ -221,7 +226,8 @@ class Obligator(object):
                                       network_id=network_id)
             self.port_cache[interface.id] = q_port
             self.session.add(q_port)
-        log.info("Found {0} interfaces without a network.".format(str(no_network_count)))  # noqa
+        log.info("Found {0} interfaces without a network."
+                 .format(str(no_network_count)))
 
     def associate_ips_with_ports(self):
         for port in self.port_cache:
@@ -325,35 +331,112 @@ class Obligator(object):
 
     def migrate_policies(self):
         """
-        Migrate the IpOctets/IPRanges with a policy id by first converting to
-        CIDRs and then migrating them over.
-
-        Rules:
-        * IPOctets and IPRanges must be converted to CIDRs prior to migration
-        * Only one policy allowed per network
-        * Only one policy allowed per subnet
-        * Subnet policies take precedence over network policies in software
-        * A rule (IPPolicy.exclude) are CIDRs to *EXCLUDE* from allocation
-        * IPOctets/IPRanges policy_id must be non-null
+        Migrate melange policies to quark ip policies
+            * Only one policy allowed per network
+            * Only one policy allowed per subnet
+            * Subnet policies take precedence over network policies in software
+        ==== STEPS: ====
+        1. get a block (including cidr, id, etc)
+        2. get the blocks policy
+        3. get the policy ip_octets and/or ip_ranges (possibly many)
+        4. convert the block.cidr (if ipv4) to ipv6
+        5. convert the octet(s) to range(s)
+        6. if there are ranges and octets, simplify the policies
+        7. determine if the block is a subnet or a network
+        8. for every new policy:
+            8.1. create a new quark_ip_policy
+            8.2. for every new range:
+                8.2.1. create a new quark_ip_policy_range
+            8.3. associate the policy_range with the policy
+            8.4 associate the policy with the network or subnet
         """
+        possible = 0
+        covered = 0
         octets = melange.IpOctets
         ranges = melange.IpRanges
+        blocks = melange.IpBlocks
+        # these cover 99% of the policies currently:
+        # version: ipv4
+        # offset: -1
+        # length: 3
+        # This creates a policy encompassing .0, .1, and .255
+        # In melange, this was a policy with just offset:0 length:1
+        # If there is only policy octet: 0, same thing.
+        q_default_offset = -1
+        q_default_length = 3
         for policy, policy_block_ids in self.policy_ids.items():
-            log.debug("Migrate policy.id {0} => "
-                      "block ids: {1}".format(policy, policy_block_ids))
+            octet_list = list()
+            range_list = list()
+            block_dict = dict()
             policy_octets = self.session.query(octets).\
                 filter(octets.policy_id == policy).all()
+            for policy_block_id in policy_block_ids:
+                block = self.session.query(blocks).\
+                    filter(blocks.id == policy_block_id).all()
+                for b in block:
+                    block_dict.update({b.id: b.cidr})
             policy_ranges = self.session.query(ranges).\
                 filter(ranges.policy_id == policy).all()
             if policy_octets:
                 for policy_octet in policy_octets:
-                    log.debug("octet: {}".format(policy_octet.octet))
+                    octet_list.append(policy_octet.octet)
             if policy_ranges:
                 for policy_range in policy_ranges:
-                    log.debug("offset:{} length:{}"
-                              .format(policy_range.offset,
-                                      policy_range.length))
-            # self.session.add(subn)
+                    range_list.append((policy_range.offset,
+                                       policy_range.length))
+            for block_id, block_cidr in block_dict.items():
+                possible += 1
+                other_version_cidr = None
+                q_version = None
+                q_offset = None
+                q_length = None
+                # ipv6 has :'s, v4 doesn't.
+                if ':' in block_cidr:
+                    q_version = 6
+                else:
+                    q_version = 4
+                try:
+                    if q_version == 6:
+                        other_version_cidr = str(netaddr
+                                                 .IPNetwork(block_cidr).ipv4())
+                    else:
+                        other_version_cidr = str(netaddr
+                                                 .IPNetwork(block_cidr).ipv6())
+                except:
+                    log.error("Couldn't convert cidr {0}".format(block_cidr))
+
+                if (octet_list == [0] and not range_list) or\
+                        (range_list == [(0, 1)] and not octet_list):
+                    # default range stuff
+                    q_offset, q_length = q_default_offset, q_default_length
+                    covered += 1.0
+                    continue
+                elif range_list and not octet_list:
+                    for range_pair in range_list:
+                        if range_pair[0] * -1 == range_pair[1]:
+                            q_offset = range_pair[0]
+                            q_length = range_pair[1]
+                            covered += 1
+                            break
+                elif octet_list and not range_list:
+                    for octet in octet_list:
+                        pass  # TODO do something with octets
+                        # they literally abused octets
+                log.debug("Migrating policy: policy_id {0}\n"
+                          "\tversion {1}, offset {2}, length {3}\n"
+                          "\tblock_id: {4}\n"
+                          "\tblock cidr: {5}\n"
+                          "\tother cidr: {6}\n"
+                          .format(policy,
+                                  q_version,
+                                  q_offset,
+                                  q_length,
+                                  block_id,
+                                  block_cidr,
+                                  other_version_cidr))
+                # self.session.add(subn)
+        log.debug("Policies covered in migration: {0}"
+                  .format((covered/possible)*100))
         log.warning("Policies not migrated, awaiting clarification... TODO")
 
     def migrate_commit(self):
@@ -366,7 +449,7 @@ class Obligator(object):
         database. Below melange is referred to as m and quark as q.
         """
         totes = 0.0
-        totes += self.do_and_time("migrate networks, subnets, routes, and ips",  # noqa
+        totes += self.do_and_time("migrate networks, subnets, routes, and ips",
                                   self.migrate_networks)
         totes += self.do_and_time("migrate ports",
                                   self.migrate_interfaces)
