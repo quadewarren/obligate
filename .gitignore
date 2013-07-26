@@ -2,6 +2,9 @@
 ######################
 .venv
 *.pyc
+*.swp
 build
 sqlwork
 lib/
+prod_*
+*.log
