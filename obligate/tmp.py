@@ -1,107 +1,73 @@
-import logging as log
-# import sys
-import os
-import datetime
 
-log_format = "{} {}\t{}\t{}".format('%(asctime)s',
-                                    '%(levelname)s',
-                                    '%(funcName)s',
-                                    '%(message)s')
-log_dateformat = '%m/%d/%Y %I:%M:%S %p'
-file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
-now = datetime.datetime.now()
-filename_format = 'logs/obligate.{}.log'.format(now.strftime(file_timeformat))
-# create the logs directory if it doesn't exist
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-log.basicConfig(format=log_format,
-                datefmt=log_dateformat,
-                filename=filename_format,
-                filemode='w',
-                level=log.DEBUG)
-"""
-root = log.getLogger()
-ch = log.StreamHandler(sys.stdout)
-ch.setLevel(log.DEBUG)
-formatter = log.Formatter(log_format)
-ch.setFormatter(formatter)
-root.addHandler(ch)
-"""
-
-
-def octets_to_ranges(octets=None, ranges=None):
+def octets_to_ranges(octets=None):
     """
     Combine all the octets and ranges into the smallest possible
     set of ranges. The maximum in range is 255.
 
-    >>> octets_to_ranges(octets=[2, 3, 4], ranges=None)
+    >>> octets_to_ranges(octets=[2, 3, 4])
     [(2, 5)]
 
     >>> octets_to_ranges([2, 4])
     [(2, 3), (4, 5)]
 
-    # >>> octets_to_ranges([2, 3, 4, 5, 6, 7, 9, 10, 11, 12])
+    >>> octets_to_ranges([2, 3, 4, 5, 6, 7, 9, 10, 11, 12])
     [(2, 8), (9, 13)]
 
-    >>> octets_to_ranges([1], ranges=[(1, 2)])
+    >>> octets_to_ranges([1])
     [(1, 2)]
 
+    23:05:45 roaet | sort them ascending
+23:05:59 roaet | [1,2,4,5,6,9,10]
+23:06:00 roaet | sorted
+23:06:14 roaet | get the first number a push it onto a stack (list)
+23:06:20 roaet | S = [1]
+23:06:29 roaet | loop through the rest
+23:06:32 roaet | so 2.. 10
+23:06:46 roaet | check if the number is 1 greater than the number in the stack
+23:06:52 roaet | if it is push it into the stack
+23:06:55 roaet | S = [1,2]
+23:06:58 roaet | check again
+23:07:07 roaet | if the number is 1 greater than the number
+                 (on the top) of the stack
+23:07:15 roaet | (modifying my previous check to on top of stack)
+23:07:22 roaet | 4  != 2 + 1
+23:07:33 roaet | The top and bottom of the stack is your range
+23:07:37 roaet | (1,2)
+23:07:48 roaet | make the stack your range, put it into a list, empty the stack
+23:07:49 roaet | S = []
+23:07:53 roaet | push 4 into the stack
+23:07:58 roaet | S = [4]
+23:08:00 roaet | continue loop
+23:08:08 roaet | S = [4,5,6]
+23:08:19 roaet | 9 != 6+1
     """
-    # import pdb
-    # pdb.set_trace()
-    octets.sort()
-    log.debug("=======\n\t\t\tOctets created: {0}".format(octets))
-    tmp_pairs = list()
     retvals = list()
-    # build the pairs
-    for octet in octets:
-        tmp_pairs.append((octet, octet+1))
-    log.debug("tmp_pairs created: {0}".format(tmp_pairs))
-    prev_pair = None
-    range_min = None
-    range_max = None
-    for i, pair in enumerate(tmp_pairs, start=1):
-        log.debug("-L64: i:{0} pair:{1}".format(i, pair))
-        final_pair = i == len(tmp_pairs)
-        log.debug("-L66: final_pair:{0}".format(final_pair))
-        log.debug("-L67: prev_pair:{0}".format(prev_pair))
-        if not prev_pair:
-            log.debug("-L69:\tnot prev pair...")
-            # this is the first pair
-            prev_pair = pair
-            range_min = pair[0]
-            range_max = pair[1]
-            log.debug("-L75: prev_pair:{0} range_min:{1} range_max:{2}"
-                      .format(prev_pair, range_min, range_max))
-        elif pair[0] == prev_pair[1]:  # and not final_pair:
-            log.debug("-L77:\tpair[0]==prev_pair[1] & !final_pair...")
-            # the range continues
-            prev_pair = pair
-            range_max = pair[1]
-            log.debug("-L81: prev_pair:{0} range_max: {1}"
-                      .format(prev_pair, range_max))
-        if final_pair:
-            log.debug("-L84:\tfinal_pair...")
-            # reached the end of the pairs
-            retvals.append((range_min, range_max))
-            log.debug("-L87: retvals appended: {0}"
-                      .format(retvals))
+    all_octets = list()
+    stack = list()
+    for o in octets:
+        all_octets.append(o)
+    all_octets.sort()
+    if len(all_octets) == 1:
+        return [(all_octets[0], all_octets[0]+1)]
+    stack.append(all_octets[0])
+    for c, i in enumerate(all_octets[1:], start=1):
+        # loop through rest of stack
+        # check if one greater than top of stack
+        if i - 1 == stack[-1]:
+            # if it is, push onto stack
+            stack.append(i)
         else:
-            log.debug("-L90:\tnot final pair...")
-            # not at the end of the pairs
-            retvals.append((range_min, range_max))
-            log.debug("-L93: retvals appended: {0}"
-                      .format(retvals))
-            prev_pair = None
-            log.debug("-L96: prev_pair: {0}"
-                      .format(prev_pair))
-    log.debug("++++++++\n\t\t\tDone. Retvals: {0}".format(retvals))
+            # otherwise, bottom and top of stack are range
+            retvals.append((stack[0], stack[-1]+1))
+            stack = list()
+            stack.append(i)
+        if c == len(all_octets) - 1:
+            # this is the magic sauce right cheur
+            retvals.append((stack[0], stack[-1]+1))
+
     return retvals
 
 
 if __name__ == "__main__":
-    # octets_to_ranges([2, 3, 4, 5, 6, 7, 9, 10, 11, 12])
-    # print
-    # octets_to_ranges([2, 4])
     import doctest
     doctest.testmod()
