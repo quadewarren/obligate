@@ -15,6 +15,7 @@
 import netaddr
 import datetime
 import time
+import json
 
 from sqlalchemy.orm import sessionmaker
 
@@ -61,8 +62,7 @@ def loadSession():
 
 def list_to_ranges(the_list=None):
     """
-    Combine all the integers into the smallest possible
-    set of ranges. The maximum in range is 255.
+    Combine all the integers into the smallest possible set of ranges.
 
     >>> list_to_ranges(the_list=[2, 3, 4])
     [(2, 5)]
@@ -98,8 +98,8 @@ def list_to_ranges(the_list=None):
 
 def consolidate_ranges(the_ranges):
     """
-    Given a list of range values, return the fewest number of
-    ranges that include the same coverage.
+    Given a list of range values, return the fewest number of ranges that
+    include the same coverage.
 
     >>> consolidate_ranges([(1, 2)])
     [(1, 2)]
@@ -158,8 +158,27 @@ class Obligator(object):
         self.port_cache = dict()
         self.policy_ids = dict()
         self.session = session
+        file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
+        now = datetime.datetime.now()
+        self.json_filename = 'logs/obligate.{}.json'\
+            .format(now.strftime(file_timeformat))
+        self.json_data = dict()
         if not self.session:
             log.warning("No session created when initializing Obligator.")
+
+    def dump_json(self):
+        """
+        This should only be called once after self.json_data has been populated
+        otherwise the same data will be written multiple times.
+        """
+        import io
+        # doing the whole io.open/ensure ascii to keep the json file
+        # small in case of utf-8 data... which shouldn't actually be a problem
+        # in this case but it can't hurt.
+        with io.open(self.json_filename, 'wb', encoding='utf8') as fh:
+            fh.write(unicode(json.dump(self.json_data,
+                                       fh,
+                                       ensure_ascii=False)))
 
     def flush_db(self):
         log.debug("drop/create imminent.")
@@ -178,7 +197,8 @@ class Obligator(object):
             raise e
         end_time = time.time()
         log.info("end  : {0}".format(label))
-        log.info("delta: {0} = {1} seconds".format(label, str(end_time - start_time)))  # noqa
+        log.info("delta: {0} = {1} seconds"
+                 .format(label, str(end_time - start_time)))
         return end_time - start_time
 
     def migrate_networks(self):
@@ -193,6 +213,8 @@ class Obligator(object):
         in quark.
         """
         blocks = self.session.query(melange.IpBlocks).all()
+        tmpdata = {'blocks_length': len(blocks)}
+        self.dump_json(tmpdata)
         networks = dict()
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
