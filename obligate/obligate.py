@@ -160,9 +160,54 @@ class Obligator(object):
         self.session = session
         file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
         now = datetime.datetime.now()
+        # the json data is for testing purposes and may be removed
+        # in production to increase performance slightly.
         self.json_filename = 'logs/obligate.{}.json'\
             .format(now.strftime(file_timeformat))
-        self.json_data = dict()
+        self.json_data = {'networks': {'num migrated': False,
+                                       'num not migrated': False,
+                                       'ids all': list(),
+                                       'ids migrated': list(),
+                                       'ids not migrated': list()
+                                       },
+                          'routes': {'num migrated': False,
+                                     'num not migrated': False,
+                                     'ids all': list(),
+                                     'ids migrated': list(),
+                                     'ids not migrated': list()
+                                     },
+                          'ips': {'num migrated': False,
+                                  'num not migrated': False,
+                                  'ids all': list(),
+                                  'ids migrated': list(),
+                                  'ids not migrated': list()
+                                  },
+                          'interfaces': {'num migrated': False,
+                                         'num not migrated': False,
+                                         'ids all': list(),
+                                         'ids migrated': list(),
+                                         'ids not migrated': list()
+                                         },
+                          'allocatable_ips': {'num migrated': False,
+                                              'num not migrated': False,
+                                              'ids all': list(),
+                                              'ids migrated': list(),
+                                              'ids not migrated': list()
+                                              },
+                          'macs': {'num migrated': False,
+                                   'num not migrated': False,
+                                   'ids all': list(),
+                                   'ids migrated': list(),
+                                   'ids not migrated': list()
+                                   },
+                          'policies': {'num migrated': False,
+                                       'num not migrated': False,
+                                       'ids all': list(),
+                                       'ids migrated': list(),
+                                       'ids not migrated': list()
+                                       }
+                          }
+
         if not self.session:
             log.warning("No session created when initializing Obligator.")
 
@@ -213,8 +258,6 @@ class Obligator(object):
         in quark.
         """
         blocks = self.session.query(melange.IpBlocks).all()
-        tmpdata = {'blocks_length': len(blocks)}
-        self.dump_json(tmpdata)
         networks = dict()
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
