@@ -171,6 +171,12 @@ class Obligator(object):
                                        'ids migrated': [],
                                        'ids not migrated': []
                                        },
+                          'subnets': {'num migrated': 0,
+                                      'num not migrated': 0,
+                                      'ids all': [],
+                                      'ids migrated': [],
+                                      'ids not migrated': []
+                                      },
                           'routes': {'num migrated': 0,
                                      'num not migrated': 0,
                                      'ids all': [],
@@ -288,6 +294,8 @@ class Obligator(object):
                                           network_id=block.network_id,
                                           cidr=block.cidr)
             self.session.add(q_subnet)
+            self.json_data['subnets']['num migrated'] += 1
+            self.json_data['subnets']['ids migrated'].append(q_subnet.id)
             self.migrate_ips(block=block)
             self.migrate_routes(block=block)
             # caching policy_ids for use in migrate_policies
