@@ -216,11 +216,13 @@ class Obligator(object):
         This should only be called once after self.json_data has been populated
         otherwise the same data will be written multiple times.
         """
-        from pprint import pprint
         # for now, prettyprint to stdout
         # with open(self.json_filename, 'wb') as fh:
         #     fh.write(json.dump(self.json_data, fh))
-        pprint(json.dumps(self.json_data))
+        json.dumps(self.json_data,
+                   sort_keys=True,
+                   indent=4,
+                   separators=(',', ': '))
 
     def flush_db(self):
         log.debug("drop/create imminent.")
