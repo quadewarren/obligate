@@ -25,6 +25,7 @@ from quark.db import models as quarkmodels
 import logging as log
 import sys
 import os
+# import argparse
 
 log_format = "{} {}\t{}\t{}".format('%(asctime)s',
                                     '%(levelname)s',
@@ -255,8 +256,6 @@ class Obligator(object):
         An ip_block has a cidr which maps to a corresponding subnet
         in quark.
         """
-        self.json_data['networks']['num migrated'] = 0
-        self.json_data['networks']['num not migrated'] = 0
         blocks = self.session.query(melange.IpBlocks).all()
         networks = dict()
         """Create the networks using the network_id. It is assumed that
@@ -307,12 +306,15 @@ class Obligator(object):
         routes = self.session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
+            self.json_data['routes']['ids all'].append(route.id)
             q_route = quarkmodels.Route(id=route.id,
                                         cidr=route.netmask,
                                         tenant_id=block.tenant_id,
                                         gateway=route.gateway,
                                         created_at=block.created_at,
                                         subnet_id=block.id)
+            self.json_data['routes']['ids migrated'].append(q_route.id)
+            self.json_data['routes']['num migrated'] += 1
             self.session.add(q_route)
 
     def migrate_ips(self, block=None):
@@ -367,7 +369,8 @@ class Obligator(object):
             if interface not in self.interface_ip:
                 self.interface_ip[interface] = set()
             self.interface_ip[interface].add(q_ip)
-
+            self.json_data['ips']['num migrated'] += 1
+            self.json_data['ips']['ids migrated'].append(q_ip.id)
             self.session.add(q_ip)
 
     def migrate_interfaces(self):
@@ -626,10 +629,14 @@ class Obligator(object):
         log.debug("Done.")
 
 
-if __name__ == "__main__":
+def main():
     session = loadSession()
     migration = Obligator(session)
     migration.flush_db()
     migration.migrate()
     log.info("Dumping json to file {0}...".format(migration.json_filename))
     migration.dump_json()
+
+
+if __name__ == "__main__":
+    main()
