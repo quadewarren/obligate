@@ -165,50 +165,45 @@ class Obligator(object):
         # in production to increase performance slightly.
         self.json_filename = 'logs/obligate.{}.json'\
             .format(now.strftime(file_timeformat))
-        self.json_data = {'networks': {'num migrated': 0,
-                                       'num not migrated': 0,
-                                       'ids migrated': [],
-                                       'ids not migrated': []
-                                       },
-                          'subnets': {'num migrated': 0,
-                                      'num not migrated': 0,
-                                      'ids migrated': [],
-                                      'ids not migrated': []
-                                      },
-                          'routes': {'num migrated': 0,
-                                     'num not migrated': 0,
-                                     'ids migrated': [],
-                                     'ids not migrated': []
-                                     },
-                          'ips': {'num migrated': 0,
-                                  'num not migrated': 0,
-                                  'ids migrated': [],
-                                  'ids not migrated': []
-                                  },
-                          'interfaces': {'num migrated': 0,
-                                         'num not migrated': 0,
-                                         'ids migrated': [],
-                                         'ids not migrated': []
-                                         },
-                          'allocatable_ips': {'num migrated': 0,
-                                              'num not migrated': 0,
-                                              'ids migrated': [],
-                                              'ids not migrated': []
-                                              },
-                          'macs': {'num migrated': 0,
-                                   'num not migrated': 0,
-                                   'ids migrated': [],
-                                   'ids not migrated': []
-                                   },
-                          'policies': {'num migrated': 0,
-                                       'num not migrated': 0,
-                                       'ids migrated': [],
-                                       'ids not migrated': []
-                                       }
-                          }
-
+        self.json_data = dict()
         if not self.session:
             log.warning("No session created when initializing Obligator.")
+
+    def build_json_structure(self):
+        """
+        Create the self.json_data structure and populate defaults
+        The 'orphaned ids': dict()s will be formatted thusly:
+         'orphaned ids': {'some id': 'some reason string',
+                          'another id': 'another reason string',
+                          ...
+                          }
+        """
+        migrate_tables = ('networks',
+                          'subnets',
+                          'routes',
+                          'ips',
+                          'interfaces',
+                          'allocatable_ips',
+                          'macs',
+                          'policies')
+
+        for table in migrate_tables:
+            self.json_data[table] = {'num migrated': 0,
+                                     'orphaned ids': dict()}
+
+    def add_orphan(self, tablename, orphan_id, reason):
+        """
+        Add an orphaned id/reason to the appropo json_data dict
+        """
+        self.json_data[tablename]['orphaned ids'][orphan_id] = reason
+        self.incr_num(tablename)
+
+    def incr_num(self, tablename):
+        """
+        Increase the json_data[tablename]['num migrated']
+        This is syntactic sugar.
+        """
+        self.json_data[tablename]['num migrated'] += 1
 
     def dump_json(self):
         """
@@ -265,9 +260,9 @@ class Obligator(object):
                     "name": block.network_name,
                 }
             elif networks[block.network_id]["tenant_id"] != block.tenant_id:
-                self.json_data['networks']['ids not migrated']\
-                    .append(block.network_id)
-                self.json_data['networks']['num not migrated'] += 1
+                self.add_orphan('networks',
+                                block.network_id,
+                                'Tenant differs on network')
                 log.critical("Found different tenant on network:{0} != {1}"
                              .format(networks[block.network_id]["tenant_id"],
                                      block.tenant_id))
@@ -277,16 +272,12 @@ class Obligator(object):
                                             tenant_id=networks[net]["tenant_id"],  # noqa
                                             name=networks[net]["name"])
             self.session.add(q_network)
-            self.json_data['networks']['num migrated'] += 1
-            self.json_data['networks']['ids migrated'].append(net)
         blocks_without_policy = 0
         for block in blocks:
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=block.network_id,
                                           cidr=block.cidr)
             self.session.add(q_subnet)
-            self.json_data['subnets']['num migrated'] += 1
-            self.json_data['subnets']['ids migrated'].append(q_subnet.id)
             self.migrate_ips(block=block)
             self.migrate_routes(block=block)
             # caching policy_ids for use in migrate_policies
@@ -311,8 +302,6 @@ class Obligator(object):
                                         gateway=route.gateway,
                                         created_at=block.created_at,
                                         subnet_id=block.id)
-            self.json_data['routes']['ids migrated'].append(q_route.id)
-            self.json_data['routes']['num migrated'] += 1
             self.session.add(q_route)
 
     def migrate_ips(self, block=None):
@@ -367,8 +356,6 @@ class Obligator(object):
             if interface not in self.interface_ip:
                 self.interface_ip[interface] = set()
             self.interface_ip[interface].add(q_ip)
-            self.json_data['ips']['num migrated'] += 1
-            self.json_data['ips']['ids migrated'].append(q_ip.id)
             self.session.add(q_ip)
 
     def migrate_interfaces(self):
@@ -387,8 +374,6 @@ class Obligator(object):
                                       backend_key="NVP_TEMP_KEY",
                                       network_id=network_id)
             self.port_cache[interface.id] = q_port
-            self.json_data['interfaces']['num migrated'] += 1
-            self.json_data['interfaces']['ids migrated'].append(q_port.id)
             self.session.add(q_port)
         log.info("Found {0} interfaces without a network."
                  .format(str(no_network_count)))
@@ -418,8 +403,6 @@ class Obligator(object):
                                          address_readable=address.address,
                                          _deallocated=True,
                                          address=int(ip))
-            self.json_data['allocatable_ips']['num migrated'] += 1
-            self.json_data['allocatable_ips']['ids migrated'].append(q_ip.id)
             self.session.add(q_ip)
 
     def _to_mac_range(self, val):
@@ -483,8 +466,6 @@ class Obligator(object):
                                            address=mac.address)
             q_port = self.port_cache[mac.interface_id]
             q_port.mac_address = q_mac.address
-            self.json_data['macs']['num migrated'] += 1
-            self.json_data['macs']['ids migrated'].append(q_mac.address)
             self.session.add(q_mac)
         log.info("skipped {0} mac addresses".format(str(no_network_count)))
 
