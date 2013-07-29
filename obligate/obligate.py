@@ -397,6 +397,8 @@ class Obligator(object):
                                       backend_key="NVP_TEMP_KEY",
                                       network_id=network_id)
             self.port_cache[interface.id] = q_port
+            self.json_data['interfaces']['num migrated'] += 1
+            self.json_data['interfaces']['ids migrated'].append(q_port.id)
             self.session.add(q_port)
         log.info("Found {0} interfaces without a network."
                  .format(str(no_network_count)))
@@ -426,6 +428,8 @@ class Obligator(object):
                                          address_readable=address.address,
                                          _deallocated=True,
                                          address=int(ip))
+            self.json_data['allocatable_ips']['num migrated'] += 1
+            self.json_data['allocatable_ips']['ids migrated'].append(q_ip.id)
             self.session.add(q_ip)
 
     def _to_mac_range(self, val):
@@ -489,6 +493,8 @@ class Obligator(object):
                                            address=mac.address)
             q_port = self.port_cache[mac.interface_id]
             q_port.mac_address = q_mac.address
+            self.json_data['macs']['num migrated'] += 1
+            self.json_data['macs']['ids migrated'].append(q_mac.address)
             self.session.add(q_mac)
         log.info("skipped {0} mac addresses".format(str(no_network_count)))
 
