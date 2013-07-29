@@ -167,49 +167,41 @@ class Obligator(object):
             .format(now.strftime(file_timeformat))
         self.json_data = {'networks': {'num migrated': 0,
                                        'num not migrated': 0,
-                                       'ids all': [],
                                        'ids migrated': [],
                                        'ids not migrated': []
                                        },
                           'subnets': {'num migrated': 0,
                                       'num not migrated': 0,
-                                      'ids all': [],
                                       'ids migrated': [],
                                       'ids not migrated': []
                                       },
                           'routes': {'num migrated': 0,
                                      'num not migrated': 0,
-                                     'ids all': [],
                                      'ids migrated': [],
                                      'ids not migrated': []
                                      },
                           'ips': {'num migrated': 0,
                                   'num not migrated': 0,
-                                  'ids all': [],
                                   'ids migrated': [],
                                   'ids not migrated': []
                                   },
                           'interfaces': {'num migrated': 0,
                                          'num not migrated': 0,
-                                         'ids all': [],
                                          'ids migrated': [],
                                          'ids not migrated': []
                                          },
                           'allocatable_ips': {'num migrated': 0,
                                               'num not migrated': 0,
-                                              'ids all': [],
                                               'ids migrated': [],
                                               'ids not migrated': []
                                               },
                           'macs': {'num migrated': 0,
                                    'num not migrated': 0,
-                                   'ids all': [],
                                    'ids migrated': [],
                                    'ids not migrated': []
                                    },
                           'policies': {'num migrated': 0,
                                        'num not migrated': 0,
-                                       'ids all': [],
                                        'ids migrated': [],
                                        'ids not migrated': []
                                        }
@@ -268,7 +260,6 @@ class Obligator(object):
         a network can only belong to one tenant"""
         for block in blocks:
             if block.network_id not in networks:
-                self.json_data['networks']['ids all'].append(block.network_id)
                 networks[block.network_id] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
@@ -314,7 +305,6 @@ class Obligator(object):
         routes = self.session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
-            self.json_data['routes']['ids all'].append(route.id)
             q_route = quarkmodels.Route(id=route.id,
                                         cidr=route.netmask,
                                         tenant_id=block.tenant_id,
