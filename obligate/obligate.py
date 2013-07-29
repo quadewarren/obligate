@@ -164,47 +164,47 @@ class Obligator(object):
         # in production to increase performance slightly.
         self.json_filename = 'logs/obligate.{}.json'\
             .format(now.strftime(file_timeformat))
-        self.json_data = {'networks': {'num migrated': False,
-                                       'num not migrated': False,
-                                       'ids all': list(),
-                                       'ids migrated': list(),
-                                       'ids not migrated': list()
+        self.json_data = {'networks': {'num migrated': 0,
+                                       'num not migrated': 0,
+                                       'ids all': [],
+                                       'ids migrated': [],
+                                       'ids not migrated': []
                                        },
-                          'routes': {'num migrated': False,
-                                     'num not migrated': False,
-                                     'ids all': list(),
-                                     'ids migrated': list(),
-                                     'ids not migrated': list()
+                          'routes': {'num migrated': 0,
+                                     'num not migrated': 0,
+                                     'ids all': [],
+                                     'ids migrated': [],
+                                     'ids not migrated': []
                                      },
-                          'ips': {'num migrated': False,
-                                  'num not migrated': False,
-                                  'ids all': list(),
-                                  'ids migrated': list(),
-                                  'ids not migrated': list()
+                          'ips': {'num migrated': 0,
+                                  'num not migrated': 0,
+                                  'ids all': [],
+                                  'ids migrated': [],
+                                  'ids not migrated': []
                                   },
-                          'interfaces': {'num migrated': False,
-                                         'num not migrated': False,
-                                         'ids all': list(),
-                                         'ids migrated': list(),
-                                         'ids not migrated': list()
+                          'interfaces': {'num migrated': 0,
+                                         'num not migrated': 0,
+                                         'ids all': [],
+                                         'ids migrated': [],
+                                         'ids not migrated': []
                                          },
-                          'allocatable_ips': {'num migrated': False,
-                                              'num not migrated': False,
-                                              'ids all': list(),
-                                              'ids migrated': list(),
-                                              'ids not migrated': list()
+                          'allocatable_ips': {'num migrated': 0,
+                                              'num not migrated': 0,
+                                              'ids all': [],
+                                              'ids migrated': [],
+                                              'ids not migrated': []
                                               },
-                          'macs': {'num migrated': False,
-                                   'num not migrated': False,
-                                   'ids all': list(),
-                                   'ids migrated': list(),
-                                   'ids not migrated': list()
+                          'macs': {'num migrated': 0,
+                                   'num not migrated': 0,
+                                   'ids all': [],
+                                   'ids migrated': [],
+                                   'ids not migrated': []
                                    },
-                          'policies': {'num migrated': False,
-                                       'num not migrated': False,
-                                       'ids all': list(),
-                                       'ids migrated': list(),
-                                       'ids not migrated': list()
+                          'policies': {'num migrated': 0,
+                                       'num not migrated': 0,
+                                       'ids all': [],
+                                       'ids migrated': [],
+                                       'ids not migrated': []
                                        }
                           }
 
@@ -216,14 +216,11 @@ class Obligator(object):
         This should only be called once after self.json_data has been populated
         otherwise the same data will be written multiple times.
         """
-        import io
-        # doing the whole io.open/ensure ascii to keep the json file
-        # small in case of utf-8 data... which shouldn't actually be a problem
-        # in this case but it can't hurt.
-        with io.open(self.json_filename, 'wb', encoding='utf8') as fh:
-            fh.write(unicode(json.dump(self.json_data,
-                                       fh,
-                                       ensure_ascii=False)))
+        import pprint
+        # for now, prettyprint to stdout
+        # with open(self.json_filename, 'wb') as fh:
+        #     fh.write(json.dump(self.json_data, fh))
+        pprint(json.dumps(self.json_data))
 
     def flush_db(self):
         log.debug("drop/create imminent.")
@@ -257,17 +254,23 @@ class Obligator(object):
         An ip_block has a cidr which maps to a corresponding subnet
         in quark.
         """
+        self.json_data['networks']['num migrated'] = 0
+        self.json_data['networks']['num not migrated'] = 0
         blocks = self.session.query(melange.IpBlocks).all()
         networks = dict()
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
         for block in blocks:
             if block.network_id not in networks:
+                self.json_data['networks']['ids all'].append(block.network_id)
                 networks[block.network_id] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
                 }
             elif networks[block.network_id]["tenant_id"] != block.tenant_id:
+                self.json_data['networks']['ids not migrated']\
+                    .append(block.network_id)
+                self.json_data['networks']['num not migrated'] += 1
                 log.critical("Found different tenant on network:{0} != {1}"
                              .format(networks[block.network_id]["tenant_id"],
                                      block.tenant_id))
@@ -277,6 +280,8 @@ class Obligator(object):
                                             tenant_id=networks[net]["tenant_id"],  # noqa
                                             name=networks[net]["name"])
             self.session.add(q_network)
+            self.json_data['networks']['num migrated'] += 1
+            self.json_data['networks']['ids migrated'].append(net)
         blocks_without_policy = 0
         for block in blocks:
             q_subnet = quarkmodels.Subnet(id=block.id,
@@ -625,3 +630,5 @@ if __name__ == "__main__":
     migration = Obligator(session)
     migration.flush_db()
     migration.migrate()
+    log.info("Dumping json to file {0}...".format(migration.json_filename))
+    migration.dump_json()
