@@ -1,3 +1,17 @@
+import logging as log
+from sqlalchemy.orm import sessionmaker
+from models import melange
+
+
+def loadSession():
+    #metadata = Base.metadata
+    log.debug("Connecting to database via sqlalchemy.")
+    Session = sessionmaker(bind=melange.engine)
+    session = Session()
+    log.debug("Connected to database.")
+    return session
+
+
 def list_to_ranges(the_list=None):
     """
     Combine all the integers into the smallest possible set of ranges.
