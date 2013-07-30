@@ -252,27 +252,6 @@ class Obligator(object):
             for ip in self.interface_ip[port]:
                 q_port.ip_addresses.append(ip)
 
-    def migrate_allocatable_ips(self, block=None):
-        addresses = self.session.query(melange.AllocatableIPs)\
-            .filter_by(ip_block_id=block.id).all()
-        for address in addresses:
-            """If marked for deallocation put it into the quark ip table
-            as deallocated
-            """
-            preip = netaddr.IPAddress(address.address)
-            version = preip.version
-            ip = netaddr.IPAddress(address.address).ipv6()
-            q_ip = quarkmodels.IPAddress(id=address.id,
-                                         created_at=address.created_at,
-                                         tenant_id=block.tenant_id,
-                                         network_id=block.network_id,
-                                         subnet_id=block.id,
-                                         version=version,
-                                         address_readable=address.address,
-                                         _deallocated=True,
-                                         address=int(ip))
-            self.session.add(q_ip)
-
     def _to_mac_range(self, val):
         cidr_parts = val.split("/")
         prefix = cidr_parts[0]
