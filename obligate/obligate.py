@@ -39,17 +39,13 @@ class Obligator(object):
         self.json_filename = 'logs/obligate.{}.json'\
             .format(now.strftime(file_timeformat))
         self.json_data = dict()
+        self.build_json_structure()
         if not self.session:
             log.warning("No session created when initializing Obligator.")
 
     def build_json_structure(self):
         """
         Create the self.json_data structure and populate defaults
-        The 'orphaned ids': dict()s will be formatted thusly:
-         'orphaned ids': {'some id': 'some reason string',
-                          'another id': 'another reason string',
-                          ...
-                          }
         """
         migrate_tables = ('networks',
                           'subnets',
@@ -64,11 +60,20 @@ class Obligator(object):
             self.json_data[table] = {'num migrated': 0,
                                      'orphaned ids': dict()}
 
-    def add_orphan(self, tablename, orphan_id, reason):
+    def set_orphan(self, tablename, orphan_id, reason):
         """
         Add an orphaned id/reason to the appropo json_data dict
         """
         self.json_data[tablename]['orphaned ids'][orphan_id] = reason
+
+    def init_orphan(self, tablename, orphan_id):
+        """
+        initially set the "untouched" reason.
+        """
+        if orphan_id not in self.json_data[tablename]['orphaned ids'].keys():
+            self.set_orphan(tablename, orphan_id, 0)
+        # the 0 indicates the number of times the object has been migrated
+        # into quark from melange. A 0 post-migration indicates orphan.
 
     def incr_num(self, tablename):
         """
@@ -122,6 +127,7 @@ class Obligator(object):
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
         for block in blocks:
+            self.init_orphan('networks', block.network_id)
             if block.network_id not in networks:
                 networks[block.network_id] = {
                     "tenant_id": block.tenant_id,
