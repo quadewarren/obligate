@@ -196,7 +196,6 @@ class Obligator(object):
         Add an orphaned id/reason to the appropo json_data dict
         """
         self.json_data[tablename]['orphaned ids'][orphan_id] = reason
-        self.incr_num(tablename)
 
     def incr_num(self, tablename):
         """
@@ -212,10 +211,6 @@ class Obligator(object):
         """
         with open(self.json_filename, 'wb') as fh:
             json.dump(self.json_data, fh)
-        # print(json.dumps(self.json_data,
-        #                  sort_keys=True,
-        #                  indent=4,
-        #                  separators=(',', ': ')))
 
     def flush_db(self):
         log.debug("drop/create imminent.")
@@ -475,7 +470,7 @@ class Obligator(object):
         """
         ipnet = netaddr.IPNetwork(
             netaddr.cidr_abbrev_to_verbose(octet)).ipv6(
-                ipv4_compatible=ipv4_compatible)
+            ipv4_compatible=ipv4_compatible)
         return str(ipnet.ip)
 
     def migrate_policies(self):
