@@ -1,6 +1,38 @@
 import logging as log
 from sqlalchemy.orm import sessionmaker
 from models import melange
+import datetime
+import os
+import sys
+
+
+def logit():
+    log_format = "{} {}\t{}\t{}".format('%(asctime)s',
+                                        '%(levelname)s',
+                                        '%(funcName)s',
+                                        '%(message)s')
+    log_dateformat = '%m/%d/%Y %I:%M:%S %p'
+    file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
+    now = datetime.datetime.now()
+    basepath = os.path.dirname(os.path.realpath(__file__))
+    filename_format = '{}/logs/obligate.{}.log'\
+        .format(basepath,
+                now.strftime(file_timeformat))
+    # create the logs directory if it doesn't exist
+    if not os.path.exists(basepath + '/logs'):
+        os.makedirs(basepath + '/logs')
+    log.basicConfig(format=log_format,
+                    datefmt=log_dateformat,
+                    filename=filename_format,
+                    filemode='w',
+                    level=log.DEBUG)
+
+    root = log.getLogger()
+    ch = log.StreamHandler(sys.stdout)
+    ch.setLevel(log.DEBUG)
+    formatter = log.Formatter(log_format)
+    ch.setFormatter(formatter)
+    root.addHandler(ch)
 
 
 def loadSession():
