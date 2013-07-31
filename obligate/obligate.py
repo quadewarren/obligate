@@ -53,6 +53,7 @@ class Obligator(object):
                           'ips',
                           'interfaces',
                           'allocatable_ips',
+                          'mac_ranges',
                           'macs',
                           'policies')
 
@@ -190,13 +191,14 @@ class Obligator(object):
         routes = self.session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
+            self.init_id('routes', route.id)
             q_route = quarkmodels.Route(id=route.id,
                                         cidr=route.netmask,
                                         tenant_id=block.tenant_id,
                                         gateway=route.gateway,
                                         created_at=block.created_at,
                                         subnet_id=block.id)
-            self.session.add(q_route)
+            self.add_to_session(q_route, 'routes', q_route.id)
 
     def migrate_ips(self, block=None):
         """3. Migrate m.ip_addresses -> q.quark_ip_addresses
@@ -213,6 +215,7 @@ class Obligator(object):
         addresses = self.session.query(melange.IpAddresses)\
             .filter_by(ip_block_id=block.id).all()
         for address in addresses:
+            self.init_id('ips', address.id)
             """Populate interface_network cache"""
             interface = address.interface_id
             if interface is not None and\
@@ -250,7 +253,7 @@ class Obligator(object):
             if interface not in self.interface_ip:
                 self.interface_ip[interface] = set()
             self.interface_ip[interface].add(q_ip)
-            self.session.add(q_ip)
+            self.add_to_session(q_ip, 'ips', q_ip.id)
 
     def migrate_interfaces(self):
         interfaces = self.session.query(melange.Interfaces).all()
@@ -324,15 +327,18 @@ class Obligator(object):
                                               first_address=first_address,
                                               next_auto_assign_mac=first_address,  # noqa
                                               last_address=last_address)
-        self.session.add(q_range)
+        self.add_to_session(q_range, 'mac_ranges', q_range.id)
 
         res = self.session.query(melange.MacAddresses).all()
         no_network_count = 0
         for mac in res:
+            self.init_id('macs', mac.address)
             if mac.interface_id not in self.interface_network:
                 no_network_count += 1
-                log.info("mac.interface_id {0} not in self.interface_network"
-                         .format(mac.interface_id))
+                r = "mac.interface_id {0} not in self.interface_network"\
+                    .format(mac.interface_id)
+                log.info(r)
+                self.set_reason('macs', mac.address, r)
                 continue
             tenant_id = self.interface_tenant[mac.interface_id]
             q_mac = quarkmodels.MacAddress(tenant_id=tenant_id,
@@ -341,6 +347,7 @@ class Obligator(object):
                                            address=mac.address)
             q_port = self.port_cache[mac.interface_id]
             q_port.mac_address = q_mac.address
+            self.add_to_session(q_mac, 'macs', q_mac.address)
             self.session.add(q_mac)
         log.info("skipped {0} mac addresses".format(str(no_network_count)))
 
