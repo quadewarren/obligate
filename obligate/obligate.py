@@ -69,16 +69,20 @@ class Obligator(object):
         If an exception occurs at any point, a reason is populated
         Unsuccessful migrations replace the None with a reason string.
         """
-        if id not in self.json_data[tablename]['ids'].keys():
+        try:
             self.json_data[tablename]['ids'][id] = {'migrated': False,
                                                     'migration count': num_exp,
                                                     'reason': None}
+        except:
+            log.error("Inserting {} on {} failed.".format(id, tablename))
 
     def migrate_id(self, tablename, id):
-        if id in self.json_data[tablename]['ids'].keys():
+        try:
             self.json_data[tablename]['ids'][id]['migrated'] = True
             self.json_data[tablename]['ids'][id]['migration count'] -= 1
             self.incr_num(tablename)
+        except:
+            log.error("Key {} not in {}".format(id, tablename))
 
     def incr_num(self, tablename):
         """
@@ -88,8 +92,11 @@ class Obligator(object):
         self.json_data[tablename]['num migrated'] += 1
 
     def set_reason(self, tablename, id, reason):
-        if id in self.json_data[tablename]['ids'].keys():
+        try:
             self.json_data[tablename]['ids'][id]['reason'] = reason
+        except:
+            log.error("Key {} not in {}"
+                      " (tried reason {})".format(id, tablename, reason))
 
     def dump_json(self):
         """
@@ -123,7 +130,7 @@ class Obligator(object):
     def add_to_session(self, item, tablename, id):
         self.migrate_id(tablename, id)
         self.session.add(item)
-        
+
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
 
@@ -249,7 +256,9 @@ class Obligator(object):
         interfaces = self.session.query(melange.Interfaces).all()
         no_network_count = 0
         for interface in interfaces:
+            self.init_id("interfaces", interface.id)
             if interface.id not in self.interface_network:
+                self.set_reason("interfaces", interface.id, "no network")
                 no_network_count += 1
                 continue
             network_id = self.interface_network[interface.id]
@@ -261,7 +270,7 @@ class Obligator(object):
                                       backend_key="NVP_TEMP_KEY",
                                       network_id=network_id)
             self.port_cache[interface.id] = q_port
-            self.session.add(q_port)
+            self.add_to_session(q_port, "interfaces", q_port.id)
         log.info("Found {0} interfaces without a network."
                  .format(str(no_network_count)))
 

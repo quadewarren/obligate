@@ -23,7 +23,7 @@ import unittest2
 
 from obligate.models import melange
 from obligate.utils import logit, loadSession
-from obligate import obligate
+# from obligate import obligate
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func
 
@@ -39,11 +39,12 @@ class TestMigration(unittest2.TestCase):
         self._get_new_quark_objects()
 
     def test_migration(self):
-        #files = glob.glob('../logs/obligate.*.json')
-        #if files and len(files) > 0:
-        #    log.debug("JSON file exists: {}".format(files[0]))
-        #    data = open(files[0])
-        #    self.json_data = json.load(data)
+        files = glob.glob('logs/obligate.*.json')
+        log.info("files[0] == {}".format(files[0]))
+        if files and len(files) > 0:
+            log.debug("JSON file exists: {}".format(files[0]))
+            data = open(files[0])
+            self.json_data = json.load(data)
         #else:
         #    log.debug("JSON file does not exist, re-running migration")
         #    migration = obligate.Obligator(self.session)
@@ -90,10 +91,18 @@ class TestMigration(unittest2.TestCase):
                                       "IP Addresses", len(qaddresses))
 
     def _validate_interfaces_to_ports(self):
-        interfaces = self.session.query(melange.Interfaces).all()
-        ports = self.session.query(quarkmodels.Port).all()
-        self._compare_after_migration("Interfaces", len(interfaces),
-                                      "Ports", len(ports))
+        interfaces_count = self.session.query(
+            func.count(melange.Interfaces.id)).scalar()
+        ports_count = self.session.query(
+            func.count(quarkmodels.Port.id)).scalar()
+        err_count = 0
+        if self.json_data:
+            for k, v in self.json_data["interfaces"]["ids"].items():
+                if not v["migrated"]:
+                    err_count += 1
+        self._compare_after_migration("Interfaces",
+                                      interfaces_count - err_count,
+                                      "Ports", ports_count)
 
     def _validate_mac_addresses_to_mac_addresses(self):
         mac_ranges = self.session.query(melange.MacAddressRanges).all()
