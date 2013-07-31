@@ -16,84 +16,110 @@
 """
 Test the obligate migration: melange -> quark
 """
-
+import glob
+import json
+import logging as log
 import unittest2
 
 from obligate.models import melange
-from obligate import obligate
+from obligate.utils import logit, loadSession
+# from obligate import obligate
 from quark.db import models as quarkmodels
-from sqlalchemy.orm import sessionmaker
-
-def loadSession():
-    Session = sessionmaker(bind=melange.engine)
-    session = Session()
-    return session
-
-def flush_db():
-    quarkmodels.BASEV2.metadata.drop_all(melange.engine)
-    quarkmodels.BASEV2.metadata.create_all(melange.engine)
+from sqlalchemy import distinct, func  # noqa
 
 
 class TestMigration(unittest2.TestCase):
     def setUp(self):
         self.session = loadSession()
-        flush_db()
+        self.json_data = None
+        logit()
 
-    def tearDown(self):
-        pass
+    def get_scalar(self, pk_name, is_distinct=False):
+        if is_distinct:
+            return self.session.query(func.count(distinct(pk_name))).scalar()
+        return self.session.query(func.count(pk_name)).scalar()
 
-    def count_items(self):
-        self._get_current_melange_objects()
-        self._get_new_quark_objects()
-    
+    def count_not_migrated(self, tablename):
+        err_count = 0
+        if self.json_data:
+            for k, v in self.json_data[tablename]["ids"].items():
+                if not v["migrated"]:
+                    err_count += 1
+        return err_count
+
     def test_migration(self):
-        migration = obligate.Obligator(self.session)
-        migration.flush_db()
-        migration.migrate()
+        files = glob.glob('logs/obligate.*.json')
+        log.info("files[0] == {}".format(files[0]))
+        if files and len(files) > 0:
+            log.debug("JSON file exists: {}".format(files[0]))
+            data = open(files[0])
+            self.json_data = json.load(data)
+        #else:
+        #    log.debug("JSON file does not exist, re-running migration")
+        #    migration = obligate.Obligator(self.session)
+        #    migration.flush_db()
+        #    migration.migrate()
+        #    log.debug("MIGRATION COMPLETE")
+        #    migration.dump_json()
         self._validate_migration()
-        print "MIGRATION COMPLETE"
-
-    def _validate_migration(self):
-        print "validating migration"
-        self._validate_ip_blocks_to_networks()
-    
-    def _validate_ip_blocks_to_networks(self):
-        blocks = self.session.query(melange.IpBlocks).all()
-        print "# of ip blocks in melange: %s" % len(blocks)
-        networks = self.session.query(quarkmodels.Network).all()
-        print "# of networks in quark: %s" % len(networks)
-        for block in blocks:
-            if block.network_id not in networks:
-                print "Not in quark networks: %s" % block.network_id
         self.assertFalse(True)
 
-    def _get_current_melange_objects(self):
-        blocks = self.session.query(melange.IpBlocks).all()
-        print "# of ip blocks in melange: %s" % len(blocks)
-        routes = self.session.query(melange.IpRoutes).all()
-        print "# of routes in melange: %s" % len(routes)
-        addresses = self.session.query(melange.IpAddresses).all()
-        print "# of ip addresses in melange: %s" % len(addresses)
-        interfaces = self.session.query(melange.Interfaces).all()
-        print "# of ip interfaces in melange: %s" % len(interfaces)
-        allocatabl_ips = self.session.query(melange.AllocatableIPs).all()
-        print "# of allocatable ip addresses in melange: %s" % len(allocatabl_ips)
-        mac_range = self.session.query(melange.MacAddressRanges).all()
-        print "# of mac address ranges in melange: %s" % len(mac_range)
-         
+    def _validate_migration(self):
+        self._validate_ip_blocks_to_networks()
+        self._validate_ip_blocks_to_subnets()
+        self._validate_routes_to_routes()
+        self._validate_ip_addresses_to_ip_addresses()
+        self._validate_interfaces_to_ports()
+        self._validate_mac_addresses_to_mac_addresses()
 
-    def _get_new_quark_objects(self):
-        networks = self.session.query(quarkmodels.Network).all()
-        print "# of networks in quark: %s" % len(networks)
-        subnets = self.session.query(quarkmodels.Subnet).all()
-        print "# of subnets in quark: %s" % len(subnets)
-        routes = self.session.query(quarkmodels.Route).all()
-        print "# of routes in quark: %s" % len(routes)
-        addresses = self.session.query(quarkmodels.IPAddress).all()
-        print "# of IP Addresses in quark: %s" % len(addresses)
-        ports = self.session.query(quarkmodels.Port).all()
-        print "# of ports in quark: %s" % len(ports)
-        mac_range = self.session.query(quarkmodels.MacAddressRange).all()
-        print "# of mac ranges in quark: %s" % len(mac_range)
-        assert False
-        
+    def _validate_ip_blocks_to_networks(self):
+        # get_scalar(column, True) <- True == "disctinct" modifier
+        blocks_count = self.get_scalar(melange.IpBlocks.network_id, True)
+        networks_count = self.get_scalar(quarkmodels.Network.id)
+        self._compare_after_migration("IP Blocks", blocks_count,
+                                      "Networks", networks_count)
+
+    def _validate_ip_blocks_to_subnets(self):
+        blocks_count = self.get_scalar(melange.IpBlocks)
+        subnets_count = self.get_scalar(quarkmodels.Subnet)
+        self._compare_after_migration("IP Blocks", blocks_count,
+                                      "Subnets", subnets_count)
+
+    def _validate_routes_to_routes(self):
+        routes = self.get_scalar(melange.IpRoutes.id)
+        qroutes = self.get_scalar(quarkmodels.Route.id)
+        err_count = self.count_not_migrated("routes")
+        self._compare_after_migration("Routes", routes - err_count,
+                                      "Routes", qroutes)
+
+    def _validate_ip_addresses_to_ip_addresses(self):
+        addresses_count = self.get_scalar(melange.IpAddresses)
+        qaddresses_count = self.get_scalar(quarkmodels.IPAddress)
+        self._compare_after_migration("IP Addresses", addresses_count,
+                                      "IP Addresses", qaddresses_count)
+
+    def _validate_interfaces_to_ports(self):
+        interfaces_count = self.get_scalar(melange.Interfaces.id)
+        ports_count = self.get_scalar(quarkmodels.Port.id)
+        err_count = self.count_not_migrated("interfaces")
+        self._compare_after_migration("Interfaces",
+                                      interfaces_count - err_count,
+                                      "Ports", ports_count)
+
+    def _validate_mac_addresses_to_mac_addresses(self):
+        mac_ranges_count = self.get_scalar(melange.MacAddressRanges)
+        qmac_ranges_count = self.get_scalar(quarkmodels.MacAddressRange)
+        self._compare_after_migration("MAC ranges", mac_ranges_count,
+                                      "MAC ranges", qmac_ranges_count)
+
+    def _compare_after_migration(self, melange_type, melange_count,
+                                 quark_type, quark_count):
+        if melange_count != quark_count:
+            log.error("The number of Melange {} ({}) does "
+                      "not equal the number of Quark {} ({})".
+                      format(melange_type, melange_count,
+                             quark_type, quark_count))
+        else:
+            log.info("Melange {} successfully migrated to Quark {}. "
+                     "Total count {}.".format(melange_type, quark_type,
+                                              melange_count))

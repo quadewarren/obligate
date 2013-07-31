@@ -13,140 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import netaddr
-import datetime
 import time
-
-from sqlalchemy.orm import sessionmaker
-
+import json
+import datetime
 from models import melange
 from quark.db import models as quarkmodels
 
 import logging as log
-import sys
-import os
-
-log_format = "{} {}\t{}\t{}".format('%(asctime)s',
-                                    '%(levelname)s',
-                                    '%(funcName)s',
-                                    '%(message)s')
-log_dateformat = '%m/%d/%Y %I:%M:%S %p'
-file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
-now = datetime.datetime.now()
-filename_format = 'logs/obligate.{}.log'.format(now.strftime(file_timeformat))
-# create the logs directory if it doesn't exist
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-log.basicConfig(format=log_format,
-                datefmt=log_dateformat,
-                filename=filename_format,
-                filemode='w',
-                level=log.DEBUG)
-
-root = log.getLogger()
-ch = log.StreamHandler(sys.stdout)
-ch.setLevel(log.DEBUG)
-formatter = log.Formatter(log_format)
-ch.setFormatter(formatter)
-root.addHandler(ch)
-
-
-def loadSession():
-    #metadata = Base.metadata
-    log.debug("Connecting to database via sqlalchemy.")
-    Session = sessionmaker(bind=melange.engine)
-    session = Session()
-    log.debug("Connected to database.")
-    return session
-
-
-def list_to_ranges(the_list=None):
-    """
-    Combine all the integers into the smallest possible
-    set of ranges. The maximum in range is 255.
-
-    >>> list_to_ranges(the_list=[2, 3, 4])
-    [(2, 5)]
-
-    >>> list_to_ranges([2, 4])
-    [(2, 3), (4, 5)]
-
-    >>> list_to_ranges([2, 3, 4, 5, 6, 7, 9, 10, 11, 12])
-    [(2, 8), (9, 13)]
-
-    >>> list_to_ranges([1])
-    [(1, 2)]
-    """
-    retvals = list()
-    all_items = list()
-    stack = list()
-    for o in the_list:
-        all_items.append(o)
-    all_items.sort()
-    if len(all_items) == 1:
-        return [(all_items[0], all_items[0]+1)]
-    stack.append(all_items[0])
-    for c, i in enumerate(all_items[1:], start=1):
-        if i - 1 == stack[-1]:
-            stack.append(i)
-        else:
-            retvals.append((stack[0], stack[-1]+1))
-            stack = list()
-            stack.append(i)
-    retvals.append((stack[0], stack[-1]+1))
-    return retvals
-
-
-def consolidate_ranges(the_ranges):
-    """
-    Given a list of range values, return the fewest number of
-    ranges that include the same coverage.
-
-    >>> consolidate_ranges([(1, 2)])
-    [(1, 2)]
-
-    >>> consolidate_ranges([(6, 9), (3, 6)])
-    [(3, 9)]
-
-    >>> consolidate_ranges([(5, 12), (1, 6)])
-    [(1, 12)]
-
-    >>> consolidate_ranges([(1, 12), (1, 9), (16, 25), (12, 13)])
-    [(1, 13), (16, 25)]
-
-    """
-    if len(the_ranges) < 2:
-        return the_ranges
-    the_ranges = sorted(the_ranges, key=lambda ran: ran[0])
-    retvals = list()
-    for r in the_ranges:
-        if r[1] - r[0] == 1:
-            retvals.append(r[0])
-        else:
-            for n in range(r[0], r[1]):
-                retvals.append(n)
-    retvals = set(retvals)
-    retvals = list_to_ranges(retvals)
-    return retvals
-
-
-def ranges_to_offset_lengths(ranges):
-    """
-    offset_length is a format like a range, but indicates the offset (from 0)
-    and the length of the coverage.
-
-    >>> ranges_to_offset_lengths([(1, 5)])
-    [(1, 4)]
-
-    >>> ranges_to_offset_lengths([(3, 15)])
-    [(3, 12)]
-
-    >>> ranges_to_offset_lengths([(6, 7), (10, 100)])
-    [(6, 1), (10, 90)]
-    """
-    retvals = list()
-    for r in ranges:
-        retvals.append((r[0], r[1] - r[0]))
-    return retvals
+# import argparse TODO
 
 
 class Obligator(object):
@@ -158,8 +32,80 @@ class Obligator(object):
         self.port_cache = dict()
         self.policy_ids = dict()
         self.session = session
+        file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
+        now = datetime.datetime.now()
+        # the json data is for testing purposes and may be removed
+        # in production to increase performance slightly.
+        self.json_filename = 'logs/obligate.{}.json'\
+            .format(now.strftime(file_timeformat))
+        self.json_data = dict()
+        self.build_json_structure()
         if not self.session:
             log.warning("No session created when initializing Obligator.")
+
+    def build_json_structure(self):
+        """
+        Create the self.json_data structure and populate defaults
+        """
+        migrate_tables = ('networks',
+                          'subnets',
+                          'routes',
+                          'ips',
+                          'interfaces',
+                          'allocatable_ips',
+                          'mac_ranges',
+                          'macs',
+                          'policies')
+
+        for table in migrate_tables:
+            self.json_data[table] = {'num migrated': 0,
+                                     'ids': dict()}
+
+    def init_id(self, tablename, id, num_exp=1):
+        """
+        initially set the id in the table
+        Each id gets a dictionary.
+        If id is migrated, it is set to true and the migration count
+        increases on subsequent migrations.
+        If an exception occurs at any point, a reason is populated
+        Unsuccessful migrations replace the None with a reason string.
+        """
+        try:
+            self.json_data[tablename]['ids'][id] = {'migrated': False,
+                                                    'migration count': num_exp,
+                                                    'reason': None}
+        except:
+            log.error("Inserting {} on {} failed.".format(id, tablename))
+
+    def migrate_id(self, tablename, id):
+        try:
+            self.json_data[tablename]['ids'][id]['migrated'] = True
+            self.json_data[tablename]['ids'][id]['migration count'] -= 1
+            self.incr_num(tablename)
+        except:
+            log.error("Key {} not in {}".format(id, tablename))
+
+    def incr_num(self, tablename):
+        """
+        Increase the json_data[tablename]['num migrated']
+        This is syntactic sugar.
+        """
+        self.json_data[tablename]['num migrated'] += 1
+
+    def set_reason(self, tablename, id, reason):
+        try:
+            self.json_data[tablename]['ids'][id]['reason'] = reason
+        except:
+            log.error("Key {} not in {}"
+                      " (tried reason {})".format(id, tablename, reason))
+
+    def dump_json(self):
+        """
+        This should only be called once after self.json_data has been populated
+        otherwise the same data will be written multiple times.
+        """
+        with open(self.json_filename, 'wb') as fh:
+            json.dump(self.json_data, fh)
 
     def flush_db(self):
         log.debug("drop/create imminent.")
@@ -178,8 +124,13 @@ class Obligator(object):
             raise e
         end_time = time.time()
         log.info("end  : {0}".format(label))
-        log.info("delta: {0} = {1} seconds".format(label, str(end_time - start_time)))  # noqa
+        log.info("delta: {0} = {1} seconds"
+                 .format(label, str(end_time - start_time)))
         return end_time - start_time
+
+    def add_to_session(self, item, tablename, id):
+        self.migrate_id(tablename, id)
+        self.session.add(item)
 
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
@@ -197,27 +148,31 @@ class Obligator(object):
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
         for block in blocks:
+            self.init_id('networks', block.network_id)
             if block.network_id not in networks:
                 networks[block.network_id] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
                 }
             elif networks[block.network_id]["tenant_id"] != block.tenant_id:
-                log.critical("Found different tenant on network:{0} != {1}"
-                             .format(networks[block.network_id]["tenant_id"],
-                                     block.tenant_id))
+                r = "Found different tenant on network:{0} != {1}"\
+                    .format(networks[block.network_id]["tenant_id"],
+                            block.tenant_id)
+                log.critical(r)
+                self.set_reason('networks', block.network_id, r)
                 raise Exception
         for net in networks:
             q_network = quarkmodels.Network(id=net,
                                             tenant_id=networks[net]["tenant_id"],  # noqa
                                             name=networks[net]["name"])
-            self.session.add(q_network)
+            self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
         for block in blocks:
+            self.init_id('subnets', block.id)
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=block.network_id,
                                           cidr=block.cidr)
-            self.session.add(q_subnet)
+            self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             self.migrate_ips(block=block)
             self.migrate_routes(block=block)
             # caching policy_ids for use in migrate_policies
@@ -236,13 +191,14 @@ class Obligator(object):
         routes = self.session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
+            self.init_id('routes', route.id)
             q_route = quarkmodels.Route(id=route.id,
                                         cidr=route.netmask,
                                         tenant_id=block.tenant_id,
                                         gateway=route.gateway,
                                         created_at=block.created_at,
                                         subnet_id=block.id)
-            self.session.add(q_route)
+            self.add_to_session(q_route, 'routes', q_route.id)
 
     def migrate_ips(self, block=None):
         """3. Migrate m.ip_addresses -> q.quark_ip_addresses
@@ -259,6 +215,7 @@ class Obligator(object):
         addresses = self.session.query(melange.IpAddresses)\
             .filter_by(ip_block_id=block.id).all()
         for address in addresses:
+            self.init_id('ips', address.id)
             """Populate interface_network cache"""
             interface = address.interface_id
             if interface is not None and\
@@ -296,14 +253,15 @@ class Obligator(object):
             if interface not in self.interface_ip:
                 self.interface_ip[interface] = set()
             self.interface_ip[interface].add(q_ip)
-
-            self.session.add(q_ip)
+            self.add_to_session(q_ip, 'ips', q_ip.id)
 
     def migrate_interfaces(self):
         interfaces = self.session.query(melange.Interfaces).all()
         no_network_count = 0
         for interface in interfaces:
+            self.init_id("interfaces", interface.id)
             if interface.id not in self.interface_network:
+                self.set_reason("interfaces", interface.id, "no network")
                 no_network_count += 1
                 continue
             network_id = self.interface_network[interface.id]
@@ -315,7 +273,7 @@ class Obligator(object):
                                       backend_key="NVP_TEMP_KEY",
                                       network_id=network_id)
             self.port_cache[interface.id] = q_port
-            self.session.add(q_port)
+            self.add_to_session(q_port, "interfaces", q_port.id)
         log.info("Found {0} interfaces without a network."
                  .format(str(no_network_count)))
 
@@ -324,27 +282,6 @@ class Obligator(object):
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
                 q_port.ip_addresses.append(ip)
-
-    def migrate_allocatable_ips(self, block=None):
-        addresses = self.session.query(melange.AllocatableIPs)\
-            .filter_by(ip_block_id=block.id).all()
-        for address in addresses:
-            """If marked for deallocation put it into the quark ip table
-            as deallocated
-            """
-            preip = netaddr.IPAddress(address.address)
-            version = preip.version
-            ip = netaddr.IPAddress(address.address).ipv6()
-            q_ip = quarkmodels.IPAddress(id=address.id,
-                                         created_at=address.created_at,
-                                         tenant_id=block.tenant_id,
-                                         network_id=block.network_id,
-                                         subnet_id=block.id,
-                                         version=version,
-                                         address_readable=address.address,
-                                         _deallocated=True,
-                                         address=int(ip))
-            self.session.add(q_ip)
 
     def _to_mac_range(self, val):
         cidr_parts = val.split("/")
@@ -390,15 +327,18 @@ class Obligator(object):
                                               first_address=first_address,
                                               next_auto_assign_mac=first_address,  # noqa
                                               last_address=last_address)
-        self.session.add(q_range)
+        self.add_to_session(q_range, 'mac_ranges', q_range.id)
 
         res = self.session.query(melange.MacAddresses).all()
         no_network_count = 0
         for mac in res:
+            self.init_id('macs', mac.address)
             if mac.interface_id not in self.interface_network:
                 no_network_count += 1
-                log.info("mac.interface_id {0} not in self.interface_network"
-                         .format(mac.interface_id))
+                r = "mac.interface_id {0} not in self.interface_network"\
+                    .format(mac.interface_id)
+                log.info(r)
+                self.set_reason('macs', mac.address, r)
                 continue
             tenant_id = self.interface_tenant[mac.interface_id]
             q_mac = quarkmodels.MacAddress(tenant_id=tenant_id,
@@ -407,6 +347,7 @@ class Obligator(object):
                                            address=mac.address)
             q_port = self.port_cache[mac.interface_id]
             q_port.mac_address = q_mac.address
+            self.add_to_session(q_mac, 'macs', q_mac.address)
             self.session.add(q_mac)
         log.info("skipped {0} mac addresses".format(str(no_network_count)))
 
@@ -416,7 +357,7 @@ class Obligator(object):
         """
         ipnet = netaddr.IPNetwork(
             netaddr.cidr_abbrev_to_verbose(octet)).ipv6(
-                ipv4_compatible=ipv4_compatible)
+            ipv4_compatible=ipv4_compatible)
         return str(ipnet.ip)
 
     def migrate_policies(self):
@@ -553,10 +494,3 @@ class Obligator(object):
                                   self.migrate_commit)
         log.info("TOTAL: {0} seconds.".format(str(totes)))
         log.debug("Done.")
-
-
-if __name__ == "__main__":
-    session = loadSession()
-    migration = Obligator(session)
-    migration.flush_db()
-    migration.migrate()

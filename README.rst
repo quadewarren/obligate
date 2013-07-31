@@ -9,6 +9,6 @@ Run the install script included in this repo:
 
 Usage
 =====
-    ``python obligate.py``
+    ``python main.py``
     
-    No args yet.
+No args (yet).
