@@ -16,26 +16,16 @@
 """
 Test the obligate migration: melange -> quark
 """
-import datetime
 import glob
 import json
 import logging as log
-import os
-import sys
 import unittest2
 
 from obligate.models import melange
-from obligate.utils import logit
+from obligate.utils import logit, loadSession
 from obligate import obligate
 from quark.db import models as quarkmodels
-from sqlalchemy.orm import sessionmaker
-
-
-def loadSession():
-    # TODO: centralize between migration and tests
-    Session = sessionmaker(bind=melange.engine)
-    session = Session()
-    return session
+from sqlalchemy import distinct, func
 
 
 class TestMigration(unittest2.TestCase):
@@ -49,18 +39,18 @@ class TestMigration(unittest2.TestCase):
         self._get_new_quark_objects()
 
     def test_migration(self):
-        files = glob.glob('../logs/obligate.*.json')
-        if files and len(files) > 0:
-            log.debug("JSON file exists: {}".format(files[0]))
-            data = open(files[0])
-            self.json_data = json.load(data)
-        else:
-            log.debug("JSON file does not exist, re-running migration")
-            migration = obligate.Obligator(self.session)
-            migration.flush_db()
-            migration.migrate()
-            log.debug("MIGRATION COMPLETE")
-            migration.dump_json()
+        #files = glob.glob('../logs/obligate.*.json')
+        #if files and len(files) > 0:
+        #    log.debug("JSON file exists: {}".format(files[0]))
+        #    data = open(files[0])
+        #    self.json_data = json.load(data)
+        #else:
+        #    log.debug("JSON file does not exist, re-running migration")
+        #    migration = obligate.Obligator(self.session)
+        #    migration.flush_db()
+        #    migration.migrate()
+        #    log.debug("MIGRATION COMPLETE")
+        #    migration.dump_json()
         self._validate_migration()
         self.assertFalse(True)
 
@@ -73,17 +63,13 @@ class TestMigration(unittest2.TestCase):
         self._validate_mac_addresses_to_mac_addresses()
 
     def _validate_ip_blocks_to_networks(self):
-        blocks = self.session.query(melange.IpBlocks).all()
-        networks = self.session.query(quarkmodels.Network).all()
-        self._compare_after_migration("IP Blocks", len(blocks),
-                                      "Networks", len(networks))
-        #ids_not_migrated = self.json_data['networks']['orphaned ids']
-        #ids_migrated = self.json_data['networks']['num migrated']
-        #log.debug("Number of network IDs not migrated is {}".\
-        #          format(len(ids_not_migrated)))
-        #log.debug("Number of network IDs migrated is {}".\
-        #          format(ids_migrated))
-        #log.debug(dir(blocks[0]))
+        blocks_count = self.session.query(
+            func.count(distinct(melange.IpBlocks.network_id))).\
+            scalar()
+        networks_count = self.session.query(
+            func.count(quarkmodels.Network.id)).scalar()
+        self._compare_after_migration("IP Blocks", blocks_count,
+                                      "Networks", networks_count)
 
     def _validate_ip_blocks_to_subnets(self):
         blocks = self.session.query(melange.IpBlocks).all()

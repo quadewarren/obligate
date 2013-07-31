@@ -58,22 +58,27 @@ class Obligator(object):
 
         for table in migrate_tables:
             self.json_data[table] = {'num migrated': 0,
-                                     'orphaned ids': dict()}
+                                     'ids': dict()}
 
-    def set_orphan(self, tablename, orphan_id, reason):
+    def init_id(self, tablename, id, num_exp=1):
         """
-        Add an orphaned id/reason to the appropo json_data dict
+        initially set the id in the table
+        Each id gets a dictionary.
+        If id is migrated, it is set to true and the migration count
+        increases on subsequent migrations.
+        If an exception occurs at any point, a reason is populated
+        Unsuccessful migrations replace the None with a reason string.
         """
-        self.json_data[tablename]['orphaned ids'][orphan_id] = reason
+        if id not in self.json_data[tablename]['ids'].keys():
+            self.json_data[tablename]['ids'][id] = {'migrated': False,
+                                                    'migration count': num_exp,
+                                                    'reason': None}
 
-    def init_orphan(self, tablename, orphan_id):
-        """
-        initially set the "untouched" reason.
-        """
-        if orphan_id not in self.json_data[tablename]['orphaned ids'].keys():
-            self.set_orphan(tablename, orphan_id, 0)
-        # the 0 indicates the number of times the object has been migrated
-        # into quark from melange. A 0 post-migration indicates orphan.
+    def migrate_id(self, tablename, id):
+        if id in self.json_data[tablename]['ids'].keys():
+            self.json_data[tablename]['ids'][id]['migrated'] = True
+            self.json_data[tablename]['ids'][id]['migration count'] -= 1
+            self.incr_num(tablename)
 
     def incr_num(self, tablename):
         """
@@ -81,6 +86,10 @@ class Obligator(object):
         This is syntactic sugar.
         """
         self.json_data[tablename]['num migrated'] += 1
+
+    def set_reason(self, tablename, id, reason):
+        if id in self.json_data[tablename]['ids'].keys():
+            self.json_data[tablename]['ids'][id]['reason'] = reason
 
     def dump_json(self):
         """
@@ -111,6 +120,10 @@ class Obligator(object):
                  .format(label, str(end_time - start_time)))
         return end_time - start_time
 
+    def add_to_session(self, item, tablename, id):
+        self.migrate_id(tablename, id)
+        self.session.add(item)
+        
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
 
@@ -127,31 +140,31 @@ class Obligator(object):
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
         for block in blocks:
-            self.init_orphan('networks', block.network_id)
+            self.init_id('networks', block.network_id)
             if block.network_id not in networks:
                 networks[block.network_id] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
                 }
             elif networks[block.network_id]["tenant_id"] != block.tenant_id:
-                self.add_orphan('networks',
-                                block.network_id,
-                                'Tenant differs on network')
-                log.critical("Found different tenant on network:{0} != {1}"
-                             .format(networks[block.network_id]["tenant_id"],
-                                     block.tenant_id))
+                r = "Found different tenant on network:{0} != {1}"\
+                    .format(networks[block.network_id]["tenant_id"],
+                            block.tenant_id)
+                log.critical(r)
+                self.set_reason('networks', block.network_id, r)
                 raise Exception
         for net in networks:
             q_network = quarkmodels.Network(id=net,
                                             tenant_id=networks[net]["tenant_id"],  # noqa
                                             name=networks[net]["name"])
-            self.session.add(q_network)
+            self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
         for block in blocks:
+            self.init_id('subnets', block.id)
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=block.network_id,
                                           cidr=block.cidr)
-            self.session.add(q_subnet)
+            self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             self.migrate_ips(block=block)
             self.migrate_routes(block=block)
             # caching policy_ids for use in migrate_policies

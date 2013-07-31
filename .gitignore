@@ -8,3 +8,4 @@ sqlwork
 lib/
 prod_*
 *.log
+logs/
