@@ -290,15 +290,15 @@ class Obligator(object):
         and quark_mac_addresses may be complicated to set up (if it exists)
         """
         """Only migrating the first mac_address_range from melange."""
+        import netaddr
         mac_range = self.session.query(melange.MacAddressRanges).first()
         cidr = mac_range.cidr
-        cidr, first_address, last_address = to_mac_range(cidr)
-        if not cidr:
-            # a problem with the cidr... jsonify the error
-            # ...a bit hacky
-            reason = first_address
-            self.set_reason(mac_range.id, "mac_ranges", reason)
-            return False  # ...?
+        try:
+            cidr, first_address, last_address = to_mac_range(cidr)
+        except ValueError as e:
+            self.set_reason(mac_range.id, "mac_ranges", e.message)
+        except netaddr.AddrFormatError as afe:
+            self.set_reason(mac_range.id, "mac_ranges", afe.message)
         q_range = quarkmodels.MacAddressRange(id=mac_range.id,
                                               cidr=cidr,
                                               created_at=mac_range.created_at,

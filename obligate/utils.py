@@ -155,6 +155,14 @@ def to_mac_range(val):
     >>> to_mac_range(testval4)
     ('00:00:00:00:00:00/10', 0, 274877906944)
 
+    bad cidr:
+    >>> badcidr = "ZZZZZZ"
+    >>> to_mac_range(badcidr) # doctest: +IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+        ...
+    AddrFormatError: ZZZZZZ000000 raised netaddr.AddrFormatError:
+        failed to detect EUI version: 'ZZZZZZ000000'... ignoring.
+
     """
     import netaddr
     cidr_parts = val.split("/")
@@ -164,7 +172,6 @@ def to_mac_range(val):
     prefix_length = len(prefix)
     if prefix_length < 6 or prefix_length > 10:
         r = "6>len({0}) || len({0})>10 [len == {1}]".format(val, prefix_length)
-        # raise quark_exceptions.InvalidMacAddressRange(cidr=val)
         raise ValueError(r)
     diff = 12 - len(prefix)
     if len(cidr_parts) > 1:
@@ -178,9 +185,9 @@ def to_mac_range(val):
     except netaddr.AddrFormatError as e:
         r = "{} raised netaddr.AddrFormatError: ".format(prefix)
         r += "{}... ignoring.".format(e.message)
-        #raise quark_exceptions.InvalidMacAddressRange(cidr=val)
-        return None, r, None
+        raise netaddr.AddrFormatError(r)
     prefix_int = int(prefix, base=16)
+    del netaddr
     return cidr, prefix_int, prefix_int + mask_size
 
 
