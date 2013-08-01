@@ -113,14 +113,6 @@ class TestMigration(unittest2.TestCase):
         self._compare_after_migration("MAC ranges", 
                                       mac_ranges_count - err_count,
                                       "MAC ranges", qmac_ranges_count)
-        # validate cidr, first_address, last_address in a quark mac
-        # mac address after it is migrated from a a melange mac_range.cidr
-        mac_range = self.session.query(melange.MacAddressRanges).first()
-        q_range = self.session.query(quarkmodels.MacAddressRange).\
-            filter(quarkmodels.MacAddressRange.id == mac_range.id).first()
-        self.assertEqual(q_range.cidr, 'blah')
-        self.assertEqual(q_range.first_address, 'blah')
-        self.assertEqual(q_range.last_address, 'blah')
 
     def _compare_after_migration(self, melange_type, melange_count,
                                  quark_type, quark_count):
