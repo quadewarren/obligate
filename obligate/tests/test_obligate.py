@@ -23,7 +23,7 @@ import unittest2
 
 from obligate.models import melange
 from obligate.utils import logit, loadSession
-# from obligate import obligate
+from obligate import obligate
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func  # noqa
 
@@ -45,31 +45,46 @@ class TestMigration(unittest2.TestCase):
             for k, v in self.json_data[tablename]["ids"].items():
                 if not v["migrated"]:
                     err_count += 1
+        else:
+            log.critical("Trying to count not migrated but JSON doesn't exist")
         return err_count
 
+    def get_newest_json_file(self):
+        import os
+        from operator import itemgetter
+        files = glob.glob('logs/*.json')
+        filetimes = dict()
+        for f in files:
+            filetimes.update({f: os.stat(f).st_mtime})
+        jsonfiles = sorted(filetimes.items(), key=itemgetter(1))
+        del itemgetter  # namespace housekeeping
+        if jsonfiles:
+            most_recent = jsonfiles[-1]
+            return most_recent[0]
+        else:
+            return None
+
     def test_migration(self):
-        files = glob.glob('logs/obligate.*.json')
-        log.info("files[0] == {}".format(files[0]))
-        if files and len(files) > 0:
-            log.debug("JSON file exists: {}".format(files[0]))
-            data = open(files[0])
-            self.json_data = json.load(data)
-        #else:
-        #    log.debug("JSON file does not exist, re-running migration")
-        #    migration = obligate.Obligator(self.session)
-        #    migration.flush_db()
-        #    migration.migrate()
-        #    log.debug("MIGRATION COMPLETE")
-        #    migration.dump_json()
+        file = self.get_newest_json_file()
+        if not file:
+            log.debug("JSON file does not exist, re-running migration")
+            migration = obligate.Obligator(self.session)
+            migration.flush_db()
+            migration.migrate()
+            migration.dump_json()
+            file = self.get_newest_json_file()
+        log.info("newest json file is {}".format(file))
+        data = open(file)
+        self.json_data = json.load(data)
         self._validate_migration()
         self.assertFalse(True)
 
     def _validate_migration(self):
-        #self._validate_ip_blocks_to_networks()
-        #self._validate_ip_blocks_to_subnets()
-        #self._validate_routes_to_routes()
-        #self._validate_ip_addresses_to_ip_addresses()
-        #self._validate_interfaces_to_ports()
+        self._validate_ip_blocks_to_networks()
+        self._validate_ip_blocks_to_subnets()
+        self._validate_routes_to_routes()
+        self._validate_ip_addresses_to_ip_addresses()
+        self._validate_interfaces_to_ports()
         self._validate_mac_addresses_to_mac_addresses()
 
     def _validate_ip_blocks_to_networks(self):
@@ -102,6 +117,7 @@ class TestMigration(unittest2.TestCase):
         interfaces_count = self.get_scalar(melange.Interfaces.id)
         ports_count = self.get_scalar(quarkmodels.Port.id)
         err_count = self.count_not_migrated("interfaces")
+        log.info("Interface err_count is {}".format(err_count))
         self._compare_after_migration("Interfaces",
                                       interfaces_count - err_count,
                                       "Ports", ports_count)

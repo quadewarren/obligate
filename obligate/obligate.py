@@ -340,6 +340,16 @@ class Obligator(object):
 
     def migrate_policies(self):
         """
+
+        TODO ===========
+
+        Policies have changed. Probably need to start over on this function
+        after mocking the new policies.
+        POC: Amir
+
+        TODO ==========
+
+
         Migrate melange policies to quark ip policies
             * Only one policy allowed per network
             * Only one policy allowed per subnet
