@@ -5,12 +5,19 @@ import datetime
 import os
 import sys
 
+YELC = '\033[93m'
+REDC = '\033[91m'
+GREC = '\033[92m'
+BLUC = '\033[94m'
+ENDC = '\033[0m'
+
 
 def logit():
-    log_format = "{} {}\t{}\t{}".format('%(asctime)s',
-                                        '%(levelname)s',
-                                        '%(funcName)s',
-                                        '%(message)s')
+    log_format = "{} {}\t{}:{}\t{}".format('%(asctime)s',
+                                           '%(levelname)s',
+                                           '%(funcName)s',
+                                           '%(lineno)d',
+                                           '%(message)s')
     log_dateformat = '%m/%d/%Y %I:%M:%S %p'
     file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
     now = datetime.datetime.now()
@@ -43,6 +50,52 @@ def loadSession():
     return session
 
 
+def offset_to_range(offset):
+    """
+    >>> offset_to_range((1, 2))
+    (1, 3)
+
+    >>> offset_to_range((3, 1))
+    (3, 4)
+    """
+    return (offset[0], offset[0] + offset[1])
+
+
+def make_offset_lengths(octets, offsets):
+    """
+    TDD FTW
+    >>> o = []
+    >>> r = [(0,1)]
+    >>> make_offset_lengths(o, r)
+    [(0, 1)]
+
+    >>> r = [(-1, 2)]
+    >>> make_offset_lengths(o, r)
+    [(-1, 2)]
+
+    >>> r = [(5, 10), (11, 20)]
+    >>> o = [255, 4]
+    >>> make_offset_lengths(o, r)
+    [(4, 27), (255, 1)]
+
+    >>> r = [(5, 10), (11, 20)]
+    >>> o = [255, 3]
+    >>> make_offset_lengths(o, r)
+    [(3, 1), (5, 26), (255, 1)]
+    """
+    tmp_ranges = list()
+    tmp_or = list()
+    if offsets:
+        for o in offsets:
+            tmp_ranges.append(offset_to_range(o))
+    if octets:
+        tmp_or = list_to_ranges(octets)
+        for r in tmp_or:
+            tmp_ranges.append(r)
+    tmp_all = consolidate_ranges(tmp_ranges)
+    return ranges_to_offset_lengths(tmp_all)
+
+
 def list_to_ranges(the_list=None):
     """
     Combine all the integers into the smallest possible set of ranges.
@@ -58,6 +111,7 @@ def list_to_ranges(the_list=None):
 
     >>> list_to_ranges([1])
     [(1, 2)]
+
     """
     retvals = list()
     all_items = list()
@@ -97,6 +151,10 @@ def consolidate_ranges(the_ranges):
     [(1, 13), (16, 25)]
 
     """
+    if not the_ranges:
+        return []
+    if the_ranges[0] == 255:
+        the_ranges[0] = -1
     if len(the_ranges) < 2:
         return the_ranges
     the_ranges = sorted(the_ranges, key=lambda ran: ran[0])
@@ -114,7 +172,7 @@ def consolidate_ranges(the_ranges):
 
 def ranges_to_offset_lengths(ranges):
     """
-    offset_length is a format like a range, but indicates the offset (from 0)
+    offset_length is like a range, but indicates the offset (from 0)
     and the length of the coverage.
 
     >>> ranges_to_offset_lengths([(1, 5)])
