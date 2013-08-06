@@ -16,16 +16,18 @@ import netaddr
 import time
 import json
 import datetime
+import traceback
 from models import melange
 from quark.db import models as quarkmodels
-
-from utils import to_mac_range
+from utils import YELC, REDC, GREC, BLUC, ENDC
+from utils import to_mac_range, make_offset_lengths
 import logging as log
 # import argparse TODO
 
 
 class Obligator(object):
     def __init__(self, session=None):
+        self.error_free = True
         self.interface_tenant = dict()
         self.interfaces = dict()
         self.interface_network = dict()
@@ -56,7 +58,8 @@ class Obligator(object):
                           'allocatable_ips',
                           'mac_ranges',
                           'macs',
-                          'policies')
+                          'policies',
+                          'policy_rules')
 
         for table in migrate_tables:
             self.json_data[table] = {'num migrated': 0,
@@ -117,16 +120,21 @@ class Obligator(object):
 
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
-        log.info("start: {0}".format(label))
+        log.info("{0}start: {1}{2}".format(GREC, label, ENDC))
         try:
             fx(**kwargs)
         except Exception as e:
-            log.critical("Error during {0}:{1}".format(label, e.message))
-            # raise e
+            self.error_free = False
+            log.critical("{0}Error during {1}:{2}\n{3}{4}".format(REDC,
+                                                             label,
+                                                             e.message,
+                                                             traceback.format_exc(),  # noqa
+                                                             ENDC))
         end_time = time.time()
-        log.info("end  : {0}".format(label))
-        log.info("delta: {0} = {1} seconds"
-                 .format(label, str(end_time - start_time)))
+        log.info("{0}end  : {1}{2}".format(GREC, label, ENDC))
+        log.info("{0}delta: {1} = {2:.2f} seconds{3}"
+                 .format(BLUC, label, end_time - start_time,
+                         ENDC))
         return end_time - start_time
 
     def add_to_session(self, item, tablename, id):
@@ -179,8 +187,8 @@ class Obligator(object):
             # caching policy_ids for use in migrate_policies
             if block.policy_id:
                 if block.policy_id not in self.policy_ids.keys():
-                    self.policy_ids[block.policy_id] = list()
-                self.policy_ids[block.policy_id].append(block.id)
+                    self.policy_ids[block.policy_id] = {}
+                self.policy_ids[block.policy_id][block.id] = block.network_id
             else:
                 log.warning("Found block without a policy: {0}"
                             .format(block.id))
@@ -297,8 +305,10 @@ class Obligator(object):
             cidr, first_address, last_address = to_mac_range(cidr)
         except ValueError as e:
             self.set_reason(mac_range.id, "mac_ranges", e.message)
+            return None
         except netaddr.AddrFormatError as afe:
             self.set_reason(mac_range.id, "mac_ranges", afe.message)
+            return None
         q_range = quarkmodels.MacAddressRange(id=mac_range.id,
                                               cidr=cidr,
                                               created_at=mac_range.created_at,
@@ -340,123 +350,54 @@ class Obligator(object):
 
     def migrate_policies(self):
         """
+        Migrate policies (TODO)
 
-        TODO ===========
-
-        Policies have changed. Probably need to start over on this function
-        after mocking the new policies.
-        POC: Amir
-
-        TODO ==========
-
-
-        Migrate melange policies to quark ip policies
-            * Only one policy allowed per network
-            * Only one policy allowed per subnet
-            * Subnet policies take precedence over network policies in software
-        ==== STEPS: ====
-        1. get a block (including cidr, id, etc)
-        2. get the blocks policy
-        3. get the policy ip_octets and/or ip_ranges (possibly many)
-        4. convert the block.cidr (if ipv4) to ipv6
-        5. convert the octet(s) to range(s)
-        6. if there are ranges and octets, simplify the policies
-        7. determine if the block is a subnet or a network
-        8. for every new policy:
-            8.1. create a new quark_ip_policy
-            8.2. for every new range:
-                8.2.1. create a new quark_ip_policy_range
-            8.3. associate the policy_range with the policy
-            8.4 associate the policy with the network or subnet
+        1. Join policies with (ip_ranges, ip_octets)
+        2. Compress and convert ip_ranges, ip_octets with utils list_to_ranges,
+            consolidate_ranges, and ranges_to_offset_lengths
+        3. Count the compressed offsetlengths
+        4. Insert the json data with a migrated == len(compressed_offra)
+        5. ... migrate the objects, increasing migration_count (by 1, each row)
+        -- Testing:
+            a. look at the 'migration_count' for each json element
+            b. grab the len(join quark_ip_policies <- quark_ip_policies_rules)
+            c. compare migration_count to (b.)
+            d. log error if not equal.
+        profit.
         """
-        possible = 0
-        covered = 0
-        octets = melange.IpOctets
-        ranges = melange.IpRanges
-        blocks = melange.IpBlocks
-        # these cover 99% of the policies currently:
-        # version: ipv4
-        # offset: -1
-        # length: 3
-        # This creates a policy encompassing .0, .1, and .255
-        # In melange, this was a policy with just offset:0 length:1
-        # If there is only policy octet: 0, same thing.
-        q_default_offset = -1
-        q_default_length = 3
+        from uuid import uuid4
+        octets = self.session.query(melange.IpOctets).all()
+        log.debug("{} octets being moved to policies".format(len(octets)))
+        offsets = self.session.query(melange.IpRanges).all()
+        log.debug("{} offsets being moved to policies".format(len(offsets)))
         for policy, policy_block_ids in self.policy_ids.items():
-            octet_list = list()
-            range_list = list()
-            block_dict = dict()
-            policy_octets = self.session.query(octets).\
-                filter(octets.policy_id == policy).all()
-            for policy_block_id in policy_block_ids:
-                block = self.session.query(blocks).\
-                    filter(blocks.id == policy_block_id).all()
-                for b in block:
-                    block_dict.update({b.id: b.cidr})
-            policy_ranges = self.session.query(ranges).\
-                filter(ranges.policy_id == policy).all()
-            if policy_octets:
-                for policy_octet in policy_octets:
-                    octet_list.append(policy_octet.octet)
-            if policy_ranges:
-                for policy_range in policy_ranges:
-                    range_list.append((policy_range.offset,
-                                       policy_range.length))
-            for block_id, block_cidr in block_dict.items():
-                possible += 1
-                other_version_cidr = None
-                q_version = None
-                q_offset = None
-                q_length = None
-                # ipv6 has :'s, v4 doesn't.
-                if ':' in block_cidr:
-                    q_version = 6
-                else:
-                    q_version = 4
-                try:
-                    if q_version == 6:
-                        other_version_cidr = str(netaddr
-                                                 .IPNetwork(block_cidr).ipv4())
-                    else:
-                        other_version_cidr = str(netaddr
-                                                 .IPNetwork(block_cidr).ipv6())
-                except:
-                    log.error("Couldn't convert cidr {0}".format(block_cidr))
-
-                if (octet_list == [0] and not range_list) or\
-                        (range_list == [(0, 1)] and not octet_list):
-                    # default range stuff
-                    q_offset, q_length = q_default_offset, q_default_length
-                    covered += 1.0
-                    continue
-                elif range_list and not octet_list:
-                    for range_pair in range_list:
-                        if range_pair[0] * -1 == range_pair[1]:
-                            q_offset = range_pair[0]
-                            q_length = range_pair[1]
-                            covered += 1
-                            break
-                elif octet_list and not range_list:
-                    for octet in octet_list:
-                        pass  # TODO do something with octets
-                        # they literally abused octets
-                log.debug("Migrating policy: policy_id {0}\n"
-                          "\tversion {1}, offset {2}, length {3}\n"
-                          "\tblock_id: {4}\n"
-                          "\tblock cidr: {5}\n"
-                          "\tother cidr: {6}\n"
-                          .format(policy,
-                                  q_version,
-                                  q_offset,
-                                  q_length,
-                                  block_id,
-                                  block_cidr,
-                                  other_version_cidr))
-                # self.session.add(subn)
-        log.debug("Policies covered in migration: {0}"
-                  .format((covered/possible)*100))
-        log.warning("Policies not migrated, awaiting clarification... TODO")
+            policy_octets = [o.octet for o in octets if o.policy_id == policy]
+            policy_offsets = [(off.offset, off.length) for off in offsets
+                              if off.policy_id == policy]
+            policy_offsets = make_offset_lengths(policy_octets, policy_offsets)
+            try:
+                policy_name = self.session.query(melange.Policies.name).\
+                    filter(melange.Policies.id == policy).first()[0]
+            except:
+                policy_name = None
+            for block_id in policy_block_ids.keys():
+                policy_uuid = str(uuid4())
+                self.init_id('policies', policy_uuid)
+                q_ip_policy = quarkmodels.IPPolicy(id=policy_uuid,
+                                                   name=policy_name)
+                q_ip_policy.networks.id = policy_block_ids[block_id]
+                q_ip_policy.subnets.id = block_id
+                self.add_to_session(q_ip_policy, 'policies', policy_uuid)
+                for offset in policy_offsets:
+                    offset_uuid = str(uuid4())
+                    self.init_id('policy_rules', offset_uuid)
+                    q_ip_policy_rule = quarkmodels.\
+                        IPPolicyRange(id=offset_uuid,
+                                      offset=offset[0],
+                                      length=offset[1],
+                                      ip_policy_id=policy_uuid)
+                    self.add_to_session(q_ip_policy_rule, 'policy_rules',
+                                        offset_uuid)
 
     def migrate_commit(self):
         """4. Commit the changes to the database"""
@@ -480,5 +421,5 @@ class Obligator(object):
                                   self.migrate_policies)
         totes += self.do_and_time("commit changes",
                                   self.migrate_commit)
-        log.info("TOTAL: {0} seconds.".format(str(totes)))
-        log.debug("Done.")
+        log.info("TOTAL: {0:.2f} seconds.".format(totes))
+        log.debug("{0}Done.{1}".format(YELC, ENDC))
