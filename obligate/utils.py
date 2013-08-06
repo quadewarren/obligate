@@ -132,6 +132,65 @@ def ranges_to_offset_lengths(ranges):
     return retvals
 
 
+def to_mac_range(val):
+    """
+    >>> testval1 = "AA:AA:AA/8"
+    >>> testval2 = "12-23-45/9"
+    >>> testval3 = "::/0"
+    >>> testval4 = "00-00-00-00/10"
+
+    >>> to_mac_range(testval1)
+    ('AA:AA:AA:00:00:00/8', 187649973288960, 188749484916736)
+
+    >>> to_mac_range(testval2)
+    ('12:23:45:00:00:00/9', 19942690783232, 20492446597120)
+
+    This should fail:
+    >>> to_mac_range(testval3)
+    Traceback (most recent call last):
+        ...
+    ValueError: 6>len(::/0) || len(::/0)>10 [len == 0]
+
+    this should not fail:
+    >>> to_mac_range(testval4)
+    ('00:00:00:00:00:00/10', 0, 274877906944)
+
+    bad cidr:
+    >>> badcidr = "ZZZZZZ"
+    >>> to_mac_range(badcidr) # doctest: +IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+        ...
+    AddrFormatError: ZZZZZZ000000 raised netaddr.AddrFormatError:
+        failed to detect EUI version: 'ZZZZZZ000000'... ignoring.
+
+    """
+    import netaddr
+    cidr_parts = val.split("/")
+    prefix = cidr_parts[0]
+    prefix = prefix.replace(':', '')
+    prefix = prefix.replace('-', '')
+    prefix_length = len(prefix)
+    if prefix_length < 6 or prefix_length > 10:
+        r = "6>len({0}) || len({0})>10 [len == {1}]".format(val, prefix_length)
+        raise ValueError(r)
+    diff = 12 - len(prefix)
+    if len(cidr_parts) > 1:
+        mask = int(cidr_parts[1])
+    else:
+        mask = 48 - diff * 4
+    mask_size = 1 << (48 - mask)
+    prefix = "%s%s" % (prefix, "0" * diff)
+    try:
+        cidr = "%s/%s" % (str(netaddr.EUI(prefix)).replace("-", ":"), mask)
+    except netaddr.AddrFormatError as e:
+        r = "{} raised netaddr.AddrFormatError: ".format(prefix)
+        r += "{}... ignoring.".format(e.message)
+        raise netaddr.AddrFormatError(r)
+    prefix_int = int(prefix, base=16)
+    del netaddr
+    return cidr, prefix_int, prefix_int + mask_size
+
+
 if __name__ == "__main__":
     import doctest
     doctest.testmod()

@@ -19,6 +19,7 @@ import datetime
 from models import melange
 from quark.db import models as quarkmodels
 
+from utils import to_mac_range
 import logging as log
 # import argparse TODO
 
@@ -121,7 +122,7 @@ class Obligator(object):
             fx(**kwargs)
         except Exception as e:
             log.critical("Error during {0}:{1}".format(label, e.message))
-            raise e
+            # raise e
         end_time = time.time()
         log.info("end  : {0}".format(label))
         log.info("delta: {0} = {1} seconds"
@@ -283,44 +284,21 @@ class Obligator(object):
             for ip in self.interface_ip[port]:
                 q_port.ip_addresses.append(ip)
 
-    def _to_mac_range(self, val):
-        cidr_parts = val.split("/")
-        prefix = cidr_parts[0]
-        prefix = prefix.replace(':', '')
-        prefix = prefix.replace('-', '')
-        prefix_length = len(prefix)
-        if prefix_length < 6 or prefix_length > 10:
-            log.warning("{0} prefix_length < 6 or prefix_length > 10."
-                        " (prefix_length = {1})"
-                        .format(val, prefix_length))
-            #raise quark_exceptions.InvalidMacAddressRange(cidr=val)
-
-        diff = 12 - len(prefix)
-        if len(cidr_parts) > 1:
-            mask = int(cidr_parts[1])
-        else:
-            mask = 48 - diff * 4
-        mask_size = 1 << (48 - mask)
-        prefix = "%s%s" % (prefix, "0" * diff)
-        try:
-            cidr = "%s/%s" % (str(netaddr.EUI(prefix)).replace("-", ":"), mask)
-        except netaddr.AddrFormatError as e:
-            log.warning("{0} raised netaddr.AddrFormatError: {1}... ignoring."
-                        .format(prefix, e.message))
-            #raise quark_exceptions.InvalidMacAddressRange(cidr=val)
-        prefix_int = int(prefix, base=16)
-        return cidr, prefix_int, prefix_int + mask_size
-
     def migrate_macs(self):
         """2. Migrate the m.mac_address -> q.quark_mac_addresses
         This is the next simplest but the relationship between quark_networks
         and quark_mac_addresses may be complicated to set up (if it exists)
         """
         """Only migrating the first mac_address_range from melange."""
+        import netaddr
         mac_range = self.session.query(melange.MacAddressRanges).first()
         cidr = mac_range.cidr
-        cidr, first_address, last_address = self._to_mac_range(cidr)
-
+        try:
+            cidr, first_address, last_address = to_mac_range(cidr)
+        except ValueError as e:
+            self.set_reason(mac_range.id, "mac_ranges", e.message)
+        except netaddr.AddrFormatError as afe:
+            self.set_reason(mac_range.id, "mac_ranges", afe.message)
         q_range = quarkmodels.MacAddressRange(id=mac_range.id,
                                               cidr=cidr,
                                               created_at=mac_range.created_at,
