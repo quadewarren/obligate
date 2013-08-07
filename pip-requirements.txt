@@ -1,3 +1,4 @@
 netaddr
 sqlalchemy
 mysql-python
+clint
