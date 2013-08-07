@@ -22,7 +22,7 @@ import logging as log
 import unittest2
 
 from obligate.models import melange
-from obligate.utils import logit, loadSession
+from obligate.utils import logit, loadSession, make_offset_lengths
 from obligate import obligate
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func  # noqa
@@ -86,6 +86,8 @@ class TestMigration(unittest2.TestCase):
         self._validate_ip_addresses_to_ip_addresses()
         self._validate_interfaces_to_ports()
         self._validate_mac_addresses_to_mac_addresses()
+        self._validate_ip_block_policies_to_policies()
+        self._validate_offsets_to_policy_rules()
 
     def _validate_ip_blocks_to_networks(self):
         # get_scalar(column, True) <- True == "disctinct" modifier
@@ -95,8 +97,9 @@ class TestMigration(unittest2.TestCase):
                                       "Networks", networks_count)
 
     def _validate_ip_blocks_to_subnets(self):
-        blocks_count = self.get_scalar(melange.IpBlocks)
-        subnets_count = self.get_scalar(quarkmodels.Subnet)
+        blocks_count = self.get_scalar(melange.IpBlocks.id)
+        subnets_count = self.get_scalar(quarkmodels.Subnet.id)
+        log.debug("Subnet count is {}".format(subnets_count))
         self._compare_after_migration("IP Blocks", blocks_count,
                                       "Subnets", subnets_count)
 
@@ -108,8 +111,8 @@ class TestMigration(unittest2.TestCase):
                                       "Routes", qroutes)
 
     def _validate_ip_addresses_to_ip_addresses(self):
-        addresses_count = self.get_scalar(melange.IpAddresses)
-        qaddresses_count = self.get_scalar(quarkmodels.IPAddress)
+        addresses_count = self.get_scalar(melange.IpAddresses.id)
+        qaddresses_count = self.get_scalar(quarkmodels.IPAddress.id)
         self._compare_after_migration("IP Addresses", addresses_count,
                                       "IP Addresses", qaddresses_count)
 
@@ -123,12 +126,48 @@ class TestMigration(unittest2.TestCase):
                                       "Ports", ports_count)
 
     def _validate_mac_addresses_to_mac_addresses(self):
-        mac_ranges_count = self.get_scalar(melange.MacAddressRanges)
-        qmac_ranges_count = self.get_scalar(quarkmodels.MacAddressRange)
+        mac_ranges_count = self.get_scalar(melange.MacAddressRanges.id)
+        qmac_ranges_count = self.get_scalar(quarkmodels.MacAddressRange.id)
         err_count = self.count_not_migrated("mac_ranges")
-        self._compare_after_migration("MAC ranges", 
+        self._compare_after_migration("MAC ranges",
                                       mac_ranges_count - err_count,
                                       "MAC ranges", qmac_ranges_count)
+
+    def _validate_ip_block_policies_to_policies(self):
+        blocks_count = self.get_scalar(melange.IpBlocks.id)
+        qpolicies_count = self.get_scalar(quarkmodels.IPPolicy.id)
+        err_count = self.count_not_migrated("policies")
+        self._compare_after_migration("IP Block Policies",
+                                      blocks_count - err_count,
+                                      "Policies", qpolicies_count)
+
+    def _get_policy_offset_total(self):
+        total_policy_offsets = 0
+        policy_ids = {}
+        blocks = self.session.query(melange.IpBlocks).all()
+        for block in blocks:
+            if block.policy_id:
+                if block.policy_id not in policy_ids.keys():
+                    policy_ids[block.policy_id] = {}
+                policy_ids[block.policy_id][block.id] = block.network_id
+        octets = self.session.query(melange.IpOctets).all()
+        offsets = self.session.query(melange.IpRanges).all()
+        for policy, policy_block_ids in policy_ids.items():
+            policy_octets = [o.octet for o in octets if o.policy_id == policy]
+            policy_offsets = [(off.offset, off.length) for off in offsets
+                              if off.policy_id == policy]
+            policy_offsets = make_offset_lengths(policy_octets, policy_offsets)
+            total_policy_offsets += len(policy_offsets)
+            log.info("total_policy_offsets now {}".format(total_policy_offsets))  # noqa
+        return total_policy_offsets
+
+    def _validate_offsets_to_policy_rules(self):
+        offsets_count = self._get_policy_offset_total()
+        qpolicy_rules_count = self.get_scalar(quarkmodels.IPPolicyRange.id)
+        err_count = self.count_not_migrated("policy_rules")
+        self._compare_after_migration("Offsets",
+                                      offsets_count - err_count,
+                                      "Policy Rules", qpolicy_rules_count)
 
     def _compare_after_migration(self, melange_type, melange_count,
                                  quark_type, quark_count):

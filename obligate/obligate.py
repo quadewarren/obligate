@@ -19,10 +19,11 @@ import datetime
 import traceback
 from models import melange
 from quark.db import models as quarkmodels
-from utils import YELC, REDC, GREC, BLUC, ENDC
 from utils import to_mac_range, make_offset_lengths
 import logging as log
 # import argparse TODO
+from clint.textui import colored
+from clint.textui import progress
 
 
 class Obligator(object):
@@ -120,21 +121,18 @@ class Obligator(object):
 
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
-        log.info("{0}start: {1}{2}".format(GREC, label, ENDC))
+        log.info(colored.green("start: {}".format(label)))
         try:
             fx(**kwargs)
         except Exception as e:
             self.error_free = False
-            log.critical("{0}Error during {1}:{2}\n{3}{4}".format(REDC,
-                                                             label,
-                                                             e.message,
-                                                             traceback.format_exc(),  # noqa
-                                                             ENDC))
+            log.critical(colored.red("Error during"
+                                     " {}:{}\n{}".format(label,
+                                                         e.message,
+                                                         traceback.format_exc())))  # noqa
         end_time = time.time()
-        log.info("{0}end  : {1}{2}".format(GREC, label, ENDC))
-        log.info("{0}delta: {1} = {2:.2f} seconds{3}"
-                 .format(BLUC, label, end_time - start_time,
-                         ENDC))
+        log.info(colored.green("end  : {}".format(label)))
+        log.info(colored.blue("delta: {} = ".format(label)) + colored.white("{:.2f} seconds".format(end_time - start_time)))  # noqa
         return end_time - start_time
 
     def add_to_session(self, item, tablename, id):
@@ -156,7 +154,7 @@ class Obligator(object):
         networks = dict()
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
-        for block in blocks:
+        for block in progress.bar(blocks):
             self.init_id('networks', block.network_id)
             if block.network_id not in networks:
                 networks[block.network_id] = {
@@ -170,13 +168,13 @@ class Obligator(object):
                 log.critical(r)
                 self.set_reason('networks', block.network_id, r)
                 raise Exception
-        for net in networks:
+        for net in progress.bar(networks):
             q_network = quarkmodels.Network(id=net,
                                             tenant_id=networks[net]["tenant_id"],  # noqa
                                             name=networks[net]["name"])
             self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
-        for block in blocks:
+        for block in progress.bar(blocks):
             self.init_id('subnets', block.id)
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=block.network_id,
@@ -267,7 +265,7 @@ class Obligator(object):
     def migrate_interfaces(self):
         interfaces = self.session.query(melange.Interfaces).all()
         no_network_count = 0
-        for interface in interfaces:
+        for interface in progress.bar(interfaces):
             self.init_id("interfaces", interface.id)
             if interface.id not in self.interface_network:
                 self.set_reason("interfaces", interface.id, "no network")
@@ -287,7 +285,7 @@ class Obligator(object):
                  .format(str(no_network_count)))
 
     def associate_ips_with_ports(self):
-        for port in self.port_cache:
+        for port in progress.bar(self.port_cache):
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
                 q_port.ip_addresses.append(ip)
@@ -319,7 +317,7 @@ class Obligator(object):
 
         res = self.session.query(melange.MacAddresses).all()
         no_network_count = 0
-        for mac in res:
+        for mac in progress.bar(res):
             self.init_id('macs', mac.address)
             if mac.interface_id not in self.interface_network:
                 no_network_count += 1
@@ -367,10 +365,8 @@ class Obligator(object):
         """
         from uuid import uuid4
         octets = self.session.query(melange.IpOctets).all()
-        log.debug("{} octets being moved to policies".format(len(octets)))
         offsets = self.session.query(melange.IpRanges).all()
-        log.debug("{} offsets being moved to policies".format(len(offsets)))
-        for policy, policy_block_ids in self.policy_ids.items():
+        for policy, policy_block_ids in progress.bar(self.policy_ids.items()):
             policy_octets = [o.octet for o in octets if o.policy_id == policy]
             policy_offsets = [(off.offset, off.length) for off in offsets
                               if off.policy_id == policy]
@@ -409,7 +405,8 @@ class Obligator(object):
         database. Below melange is referred to as m and quark as q.
         """
         totes = 0.0
-        totes += self.do_and_time("migrate networks, subnets, routes, and ips",
+        totes += self.do_and_time("migrate networks, "
+                                  "subnets, routes, and ips",
                                   self.migrate_networks)
         totes += self.do_and_time("migrate ports",
                                   self.migrate_interfaces)
@@ -422,4 +419,4 @@ class Obligator(object):
         totes += self.do_and_time("commit changes",
                                   self.migrate_commit)
         log.info("TOTAL: {0:.2f} seconds.".format(totes))
-        log.debug("{0}Done.{1}".format(YELC, ENDC))
+        log.debug(colored.yellow("Done."))

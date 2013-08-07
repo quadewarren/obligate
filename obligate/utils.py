@@ -5,12 +5,6 @@ import datetime
 import os
 import sys
 
-YELC = '\033[93m'
-REDC = '\033[91m'
-GREC = '\033[92m'
-BLUC = '\033[94m'
-ENDC = '\033[0m'
-
 
 def logit():
     log_format = "{} {}\t{}:{}\t{}".format('%(asctime)s',
