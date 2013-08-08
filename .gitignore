@@ -9,3 +9,5 @@ lib/
 prod_*
 *.log
 logs/
+.tox/
+*.egg*/

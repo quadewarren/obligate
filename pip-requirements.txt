@@ -2,3 +2,5 @@ netaddr
 sqlalchemy
 mysql-python
 clint
+-e git://github.com/openstack/neutron.git@master#egg=neutron
+-e git://github.com/jkoelker/quark.git@master#egg=quark

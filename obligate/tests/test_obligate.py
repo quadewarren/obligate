@@ -77,7 +77,6 @@ class TestMigration(unittest2.TestCase):
         data = open(file)
         self.json_data = json.load(data)
         self._validate_migration()
-        self.assertFalse(True)
 
     def _validate_migration(self):
         self._validate_ip_blocks_to_networks()
@@ -99,7 +98,6 @@ class TestMigration(unittest2.TestCase):
     def _validate_ip_blocks_to_subnets(self):
         blocks_count = self.get_scalar(melange.IpBlocks.id)
         subnets_count = self.get_scalar(quarkmodels.Subnet.id)
-        self.log.debug("Subnet count is {}".format(subnets_count))
         self._compare_after_migration("IP Blocks", blocks_count,
                                       "Subnets", subnets_count)
 
@@ -120,7 +118,6 @@ class TestMigration(unittest2.TestCase):
         interfaces_count = self.get_scalar(melange.Interfaces.id)
         ports_count = self.get_scalar(quarkmodels.Port.id)
         err_count = self.count_not_migrated("interfaces")
-        self.log.info("Interface err_count is {}".format(err_count))
         self._compare_after_migration("Interfaces",
                                       interfaces_count - err_count,
                                       "Ports", ports_count)
@@ -171,12 +168,7 @@ class TestMigration(unittest2.TestCase):
 
     def _compare_after_migration(self, melange_type, melange_count,
                                  quark_type, quark_count):
-        if melange_count != quark_count:
-            self.log.error("The number of Melange {} ({}) does "
-                           "not equal the number of Quark {} ({})".
-                           format(melange_type, melange_count,
-                                  quark_type, quark_count))
-        else:
-            self.log.info("Melange {} successfully migrated to Quark {}. "
-                          "Total count {}.".format(melange_type, quark_type,
-                                                   melange_count))
+        message = "The number of Melange {} ({}) does " \
+                  "not equal the number of Quark {} ({})".\
+                  format(melange_type, melange_count, quark_type, quark_count)
+        self.assertEqual(melange_count, quark_count, message)
