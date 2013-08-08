@@ -222,8 +222,8 @@ def to_mac_range(val):
     prefix = prefix.replace(':', '')
     prefix = prefix.replace('-', '')
     prefix_length = len(prefix)
-    if prefix_length < 6 or prefix_length > 10:
-        r = "6>len({0}) || len({0})>10 [len == {1}]".format(val, prefix_length)
+    if prefix_length < 6 or prefix_length > 12:
+        r = "6>len({0}) || len({0})>12 len == {1}]".format(val, prefix_length)
         raise ValueError(r)
     diff = 12 - len(prefix)
     if len(cidr_parts) > 1:

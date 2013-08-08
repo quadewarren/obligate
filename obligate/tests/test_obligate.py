@@ -157,8 +157,8 @@ class TestMigration(unittest2.TestCase):
             policy_offsets = [(off.offset, off.length) for off in offsets
                               if off.policy_id == policy]
             policy_offsets = make_offset_lengths(policy_octets, policy_offsets)
-            total_policy_offsets += len(policy_offsets)
-            log.info("total_policy_offsets now {}".format(total_policy_offsets))  # noqa
+            for block_id in policy_block_ids.keys():
+                total_policy_offsets += len(policy_offsets)
         return total_policy_offsets
 
     def _validate_offsets_to_policy_rules(self):

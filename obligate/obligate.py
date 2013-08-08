@@ -314,7 +314,6 @@ class Obligator(object):
                                               next_auto_assign_mac=first_address,  # noqa
                                               last_address=last_address)
         self.add_to_session(q_range, 'mac_ranges', q_range.id)
-
         res = self.session.query(melange.MacAddresses).all()
         no_network_count = 0
         for mac in progress.bar(res):
@@ -323,7 +322,7 @@ class Obligator(object):
                 no_network_count += 1
                 r = "mac.interface_id {0} not in self.interface_network"\
                     .format(mac.interface_id)
-                log.info(r)
+                # log.info(r)
                 self.set_reason('macs', mac.address, r)
                 continue
             tenant_id = self.interface_tenant[mac.interface_id]
@@ -368,9 +367,9 @@ class Obligator(object):
         offsets = self.session.query(melange.IpRanges).all()
         for policy, policy_block_ids in progress.bar(self.policy_ids.items()):
             policy_octets = [o.octet for o in octets if o.policy_id == policy]
-            policy_offsets = [(off.offset, off.length) for off in offsets
-                              if off.policy_id == policy]
-            policy_offsets = make_offset_lengths(policy_octets, policy_offsets)
+            policy_rules = [(off.offset, off.length) for off in offsets
+                            if off.policy_id == policy]
+            policy_rules = make_offset_lengths(policy_octets, policy_rules)
             try:
                 policy_name = self.session.query(melange.Policies.name).\
                     filter(melange.Policies.id == policy).first()[0]
@@ -381,16 +380,21 @@ class Obligator(object):
                 self.init_id('policies', policy_uuid)
                 q_ip_policy = quarkmodels.IPPolicy(id=policy_uuid,
                                                    name=policy_name)
-                q_ip_policy.networks.id = policy_block_ids[block_id]
-                q_ip_policy.subnets.id = block_id
+                q_network = self.session.query(quarkmodels.Network).\
+                    filter(quarkmodels.Network.id ==
+                           policy_block_ids[block_id]).first()
+                q_ip_policy.networks.append(q_network)
+                q_subnet = self.session.query(quarkmodels.Subnet).\
+                    filter(quarkmodels.Subnet.id == block_id).first()
+                q_ip_policy.subnets.append(q_subnet)
                 self.add_to_session(q_ip_policy, 'policies', policy_uuid)
-                for offset in policy_offsets:
+                for rule in policy_rules:
                     offset_uuid = str(uuid4())
                     self.init_id('policy_rules', offset_uuid)
                     q_ip_policy_rule = quarkmodels.\
                         IPPolicyRange(id=offset_uuid,
-                                      offset=offset[0],
-                                      length=offset[1],
+                                      offset=rule[0],
+                                      length=rule[1],
                                       ip_policy_id=policy_uuid)
                     self.add_to_session(q_ip_policy_rule, 'policy_rules',
                                         offset_uuid)
