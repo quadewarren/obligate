@@ -18,7 +18,6 @@ Test the obligate migration: melange -> quark
 """
 import glob
 import json
-import logging as log
 import unittest2
 
 from obligate.models import melange
@@ -32,7 +31,7 @@ class TestMigration(unittest2.TestCase):
     def setUp(self):
         self.session = loadSession()
         self.json_data = None
-        logit()
+        self.log = logit('obligate.tests')
 
     def get_scalar(self, pk_name, is_distinct=False):
         if is_distinct:
@@ -46,7 +45,8 @@ class TestMigration(unittest2.TestCase):
                 if not v["migrated"]:
                     err_count += 1
         else:
-            log.critical("Trying to count not migrated but JSON doesn't exist")
+            self.log.critical("Trying to count not migrated "
+                              "but JSON doesn't exist")
         return err_count
 
     def get_newest_json_file(self):
@@ -67,13 +67,13 @@ class TestMigration(unittest2.TestCase):
     def test_migration(self):
         file = self.get_newest_json_file()
         if not file:
-            log.debug("JSON file does not exist, re-running migration")
+            self.log.debug("JSON file does not exist, re-running migration")
             migration = obligate.Obligator(self.session)
             migration.flush_db()
             migration.migrate()
             migration.dump_json()
             file = self.get_newest_json_file()
-        log.info("newest json file is {}".format(file))
+        self.log.info("newest json file is {}".format(file))
         data = open(file)
         self.json_data = json.load(data)
         self._validate_migration()
@@ -99,7 +99,7 @@ class TestMigration(unittest2.TestCase):
     def _validate_ip_blocks_to_subnets(self):
         blocks_count = self.get_scalar(melange.IpBlocks.id)
         subnets_count = self.get_scalar(quarkmodels.Subnet.id)
-        log.debug("Subnet count is {}".format(subnets_count))
+        self.log.debug("Subnet count is {}".format(subnets_count))
         self._compare_after_migration("IP Blocks", blocks_count,
                                       "Subnets", subnets_count)
 
@@ -120,7 +120,7 @@ class TestMigration(unittest2.TestCase):
         interfaces_count = self.get_scalar(melange.Interfaces.id)
         ports_count = self.get_scalar(quarkmodels.Port.id)
         err_count = self.count_not_migrated("interfaces")
-        log.info("Interface err_count is {}".format(err_count))
+        self.log.info("Interface err_count is {}".format(err_count))
         self._compare_after_migration("Interfaces",
                                       interfaces_count - err_count,
                                       "Ports", ports_count)
@@ -172,11 +172,11 @@ class TestMigration(unittest2.TestCase):
     def _compare_after_migration(self, melange_type, melange_count,
                                  quark_type, quark_count):
         if melange_count != quark_count:
-            log.error("The number of Melange {} ({}) does "
-                      "not equal the number of Quark {} ({})".
-                      format(melange_type, melange_count,
-                             quark_type, quark_count))
+            self.log.error("The number of Melange {} ({}) does "
+                           "not equal the number of Quark {} ({})".
+                           format(melange_type, melange_count,
+                                  quark_type, quark_count))
         else:
-            log.info("Melange {} successfully migrated to Quark {}. "
-                     "Total count {}.".format(melange_type, quark_type,
-                                              melange_count))
+            self.log.info("Melange {} successfully migrated to Quark {}. "
+                          "Total count {}.".format(melange_type, quark_type,
+                                                   melange_count))

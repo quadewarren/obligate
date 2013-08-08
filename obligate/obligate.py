@@ -19,11 +19,13 @@ import datetime
 import traceback
 from models import melange
 from quark.db import models as quarkmodels
-from utils import to_mac_range, make_offset_lengths
-import logging as log
+from utils import logit, to_mac_range, make_offset_lengths
+#import logging as log
 # import argparse TODO
 from clint.textui import colored
 from clint.textui import progress
+
+log = logit('obligate.obligator')
 
 
 class Obligator(object):
