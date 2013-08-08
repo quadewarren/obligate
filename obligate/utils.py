@@ -1,12 +1,13 @@
-import logging as log
-from sqlalchemy.orm import sessionmaker
-from models import melange
 import datetime
+import logging as log
+from models import melange
 import os
+from sqlalchemy.orm import sessionmaker
 import sys
 
 
 def logit(name):
+    """no doc."""
     log_format = "{} {}\t{}:{}\t{}".format('%(asctime)s',
                                            '%(levelname)s',
                                            '%(funcName)s',
@@ -38,6 +39,7 @@ def logit(name):
 
 
 def loadSession():
+    """no doc."""
     #metadata = Base.metadata
     log.debug("Connecting to database via sqlalchemy.")
     Session = sessionmaker(bind=melange.engine)
@@ -48,6 +50,8 @@ def loadSession():
 
 def offset_to_range(offset):
     """
+    no doc.
+
     >>> offset_to_range((1, 2))
     (1, 3)
 
@@ -59,7 +63,8 @@ def offset_to_range(offset):
 
 def make_offset_lengths(octets, offsets):
     """
-    TDD FTW
+    TDD FTW.
+
     >>> o = []
     >>> r = [(0,1)]
     >>> make_offset_lengths(o, r)
@@ -116,16 +121,16 @@ def list_to_ranges(the_list=None):
         all_items.append(o)
     all_items.sort()
     if len(all_items) == 1:
-        return [(all_items[0], all_items[0]+1)]
+        return [(all_items[0], all_items[0] + 1)]
     stack.append(all_items[0])
     for c, i in enumerate(all_items[1:], start=1):
         if i - 1 == stack[-1]:
             stack.append(i)
         else:
-            retvals.append((stack[0], stack[-1]+1))
+            retvals.append((stack[0], stack[-1] + 1))
             stack = list()
             stack.append(i)
-    retvals.append((stack[0], stack[-1]+1))
+    retvals.append((stack[0], stack[-1] + 1))
     return retvals
 
 
@@ -188,6 +193,8 @@ def ranges_to_offset_lengths(ranges):
 
 def to_mac_range(val):
     """
+    Doc Tests.
+
     >>> testval1 = "AA:AA:AA/8"
     >>> testval2 = "12-23-45/9"
     >>> testval3 = "::/0"

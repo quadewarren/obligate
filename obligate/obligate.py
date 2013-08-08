@@ -12,18 +12,16 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import netaddr
-import time
-import json
-import datetime
-import traceback
-from models import melange
-from quark.db import models as quarkmodels
-from utils import logit, to_mac_range, make_offset_lengths
-#import logging as log
-# import argparse TODO
 from clint.textui import colored
 from clint.textui import progress
+import datetime
+import json
+from models import melange
+import netaddr
+from quark.db import models as quarkmodels
+import time
+import traceback
+from utils import logit, to_mac_range, make_offset_lengths
 
 log = logit('obligate.obligator')
 
@@ -81,7 +79,7 @@ class Obligator(object):
             self.json_data[tablename]['ids'][id] = {'migrated': False,
                                                     'migration count': num_exp,
                                                     'reason': None}
-        except:
+        except Exception:
             log.error("Inserting {} on {} failed.".format(id, tablename))
 
     def migrate_id(self, tablename, id):
@@ -89,7 +87,7 @@ class Obligator(object):
             self.json_data[tablename]['ids'][id]['migrated'] = True
             self.json_data[tablename]['ids'][id]['migration count'] -= 1
             self.incr_num(tablename)
-        except:
+        except Exception:
             log.error("Key {} not in {}".format(id, tablename))
 
     def incr_num(self, tablename):
@@ -102,7 +100,7 @@ class Obligator(object):
     def set_reason(self, tablename, id, reason):
         try:
             self.json_data[tablename]['ids'][id]['reason'] = reason
-        except:
+        except Exception:
             log.error("Key {} not in {}"
                       " (tried reason {})".format(id, tablename, reason))
 
@@ -343,8 +341,8 @@ class Obligator(object):
         Convert an ip octet to a ipv6 cidr
         """
         ipnet = netaddr.IPNetwork(
-            netaddr.cidr_abbrev_to_verbose(octet)).ipv6(
-            ipv4_compatible=ipv4_compatible)
+            netaddr.cidr_abbrev_to_verbose(octet)).\
+            ipv6(ipv4_compatible=ipv4_compatible)
         return str(ipnet.ip)
 
     def migrate_policies(self):
@@ -375,7 +373,7 @@ class Obligator(object):
             try:
                 policy_name = self.session.query(melange.Policies.name).\
                     filter(melange.Policies.id == policy).first()[0]
-            except:
+            except Exception:
                 policy_name = None
             for block_id in policy_block_ids.keys():
                 policy_uuid = str(uuid4())

@@ -18,13 +18,12 @@ Test the obligate migration: melange -> quark
 """
 import glob
 import json
-import unittest2
-
 from obligate.models import melange
-from obligate.utils import logit, loadSession, make_offset_lengths
 from obligate import obligate
+from obligate.utils import logit, loadSession, make_offset_lengths
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func  # noqa
+import unittest2
 
 
 class TestMigration(unittest2.TestCase):
@@ -50,8 +49,8 @@ class TestMigration(unittest2.TestCase):
         return err_count
 
     def get_newest_json_file(self):
-        import os
         from operator import itemgetter
+        import os
         files = glob.glob('logs/*.json')
         filetimes = dict()
         for f in files:
