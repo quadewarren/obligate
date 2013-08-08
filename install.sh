@@ -8,9 +8,15 @@ chex() {
     fi
 }
 
+setup_aliases() {
+    echo "alias nosetests='nosetests --logging-config=tests/logging.conf'" >> .venv/bin/activate
+    alias deactivate='unalias nosetests && deactivate && unalias deactivate'
+}
+
 install_virtual_environment() {
     virtualenv --prompt='(obligate)' --distribute --no-site-packages .venv
     chex $? "Error creating virtual environment"
+    setup_aliases
     source .venv/bin/activate
 }
 
