@@ -1,10 +1,10 @@
-import logging as log
+# import logging as log
 from obligate import Obligator
 from utils import loadSession, logit
 
 
 def main():
-    logit()
+    log = logit('obligate.main')
     session = loadSession()
     migration = Obligator(session)
     migration.flush_db()

@@ -6,7 +6,7 @@ import os
 import sys
 
 
-def logit():
+def logit(name):
     log_format = "{} {}\t{}:{}\t{}".format('%(asctime)s',
                                            '%(levelname)s',
                                            '%(funcName)s',
@@ -27,12 +27,13 @@ def logit():
                     filemode='w',
                     level=log.DEBUG)
 
-    root = log.getLogger()
+    root = log.getLogger(name)
     ch = log.StreamHandler(sys.stdout)
     ch.setLevel(log.DEBUG)
     formatter = log.Formatter(log_format)
     ch.setFormatter(formatter)
     root.addHandler(ch)
+    return root
 
 
 def loadSession():
