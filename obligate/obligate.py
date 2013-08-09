@@ -237,9 +237,11 @@ class Obligator(object):
             interface = address.interface_id
             if interface is not None and\
                     interface not in self.interface_network:
-                self.interface_network[interface] = self.trim_br(block.network_id)
+                self.interface_network[interface] = \
+                    self.trim_br(block.network_id)
             if interface in self.interface_network and\
-                    self.interface_network[interface] != self.trim_br(block.network_id):
+                    self.interface_network[interface] != \
+                    self.trim_br(block.network_id):
                 log.error("Found interface with different "
                           "network id: {0} != {1}"
                           .format(self.interface_network[interface],
@@ -259,7 +261,8 @@ class Obligator(object):
             q_ip = quarkmodels.IPAddress(id=address.id,
                                          created_at=address.created_at,
                                          tenant_id=block.tenant_id,
-                                         network_id=self.trim_br(block.network_id),
+                                         network_id=
+                                         self.trim_br(block.network_id),
                                          subnet_id=block.id,
                                          version=version,
                                          address_readable=address.address,
