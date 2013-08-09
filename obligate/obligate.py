@@ -21,7 +21,7 @@ import netaddr
 from quark.db import models as quarkmodels
 import time
 import traceback
-from utils import logit, to_mac_range, make_offset_lengths
+from utils import logit, to_mac_range, make_offset_lengths, migrate_tables
 
 log = logit('obligate.obligator')
 
@@ -38,11 +38,10 @@ class Obligator(object):
         self.session = session
         file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
         now = datetime.datetime.now()
-        # the json data is for testing purposes and may be removed
-        # in production to increase performance slightly.
-        self.json_filename = 'logs/obligate.{}.json'\
+        self.json_filename = 'logs/obligate.{}'\
             .format(now.strftime(file_timeformat))
         self.json_data = dict()
+        self.migrate_tables = migrate_tables
         self.build_json_structure()
         if not self.session:
             log.warning("No session created when initializing Obligator.")
@@ -51,18 +50,7 @@ class Obligator(object):
         """
         Create the self.json_data structure and populate defaults
         """
-        migrate_tables = ('networks',
-                          'subnets',
-                          'routes',
-                          'ips',
-                          'interfaces',
-                          'allocatable_ips',
-                          'mac_ranges',
-                          'macs',
-                          'policies',
-                          'policy_rules')
-
-        for table in migrate_tables:
+        for table in self.migrate_tables:
             self.json_data[table] = {'num migrated': 0,
                                      'ids': dict()}
 
@@ -80,7 +68,8 @@ class Obligator(object):
                                                     'migration count': num_exp,
                                                     'reason': None}
         except Exception:
-            log.error("Inserting {} on {} failed.".format(id, tablename))
+            log.error("Inserting {} on {} failed.".format(id, tablename),
+                      exc_info=True)
 
     def migrate_id(self, tablename, id):
         try:
@@ -109,8 +98,10 @@ class Obligator(object):
         This should only be called once after self.json_data has been populated
         otherwise the same data will be written multiple times.
         """
-        with open(self.json_filename, 'wb') as fh:
-            json.dump(self.json_data, fh)
+        for tablename in progress.bar(self.migrate_tables):
+            with open('{}.{}.json'.format(self.json_filename, tablename),
+                      'wb') as fh:
+                json.dump(self.json_data[tablename], fh)
 
     def flush_db(self):
         log.debug("drop/create imminent.")
@@ -312,6 +303,7 @@ class Obligator(object):
         import netaddr
         mac_range = self.session.query(melange.MacAddressRanges).first()
         cidr = mac_range.cidr
+        self.init_id('mac_ranges', mac_range.id)
         try:
             cidr, first_address, last_address = to_mac_range(cidr)
         except ValueError as e:
@@ -380,10 +372,6 @@ class Obligator(object):
                 self.init_id('policies', policy_uuid)
                 q_ip_policy = quarkmodels.IPPolicy(id=policy_uuid,
                                                    name=policy_name)
-                # log.info("Block ID: {}".format(block_id))
-                # log.info("Network ID: {}".format(policy_block_ids[block_id]))
-                # log.info("Network ID length: {}".
-                #          format(len(policy_block_ids[block_id])))
                 q_network = self.session.query(quarkmodels.Network).\
                     filter(quarkmodels.Network.id ==
                            policy_block_ids[block_id]).first()

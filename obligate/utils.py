@@ -6,6 +6,17 @@ from sqlalchemy.orm import sessionmaker
 import sys
 
 
+migrate_tables = ('networks',
+                  'subnets',
+                  'routes',
+                  'ips',
+                  'interfaces',
+                  'mac_ranges',
+                  'macs',
+                  'policies',
+                  'policy_rules')
+
+
 def logit(name):
     """no doc."""
     log_format = "{} {}\t{}:{}\t{}".format('%(asctime)s',

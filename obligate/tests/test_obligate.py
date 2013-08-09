@@ -16,11 +16,13 @@
 """
 Test the obligate migration: melange -> quark
 """
+from clint.textui import progress
 import glob
 import json
 from obligate.models import melange
 from obligate import obligate
 from obligate.utils import logit, loadSession, make_offset_lengths
+from obligate.utils import migrate_tables
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func  # noqa
 import unittest2
@@ -29,7 +31,7 @@ import unittest2
 class TestMigration(unittest2.TestCase):
     def setUp(self):
         self.session = loadSession()
-        self.json_data = None
+        self.json_data = dict()
         self.log = logit('obligate.tests')
 
     def get_scalar(self, pk_name, is_distinct=False):
@@ -48,15 +50,14 @@ class TestMigration(unittest2.TestCase):
                               "but JSON doesn't exist")
         return err_count
 
-    def get_newest_json_file(self):
+    def get_newest_json_file(self, tablename):
         from operator import itemgetter
         import os
-        files = glob.glob('logs/*.json')
+        files = glob.glob('logs/*{}.json'.format(tablename))
         filetimes = dict()
         for f in files:
             filetimes.update({f: os.stat(f).st_mtime})
         jsonfiles = sorted(filetimes.items(), key=itemgetter(1))
-        del itemgetter  # namespace housekeeping
         if jsonfiles:
             most_recent = jsonfiles[-1]
             return most_recent[0]
@@ -64,56 +65,52 @@ class TestMigration(unittest2.TestCase):
             return None
 
     def test_migration(self):
-        file = self.get_newest_json_file()
-        if not file:
-            self.log.debug("JSON file does not exist, re-running migration")
-            migration = obligate.Obligator(self.session)
-            migration.flush_db()
-            migration.migrate()
-            migration.dump_json()
-            file = self.get_newest_json_file()
-        self.log.info("newest json file is {}".format(file))
-        data = open(file)
-        self.json_data = json.load(data)
-        self._validate_migration()
+        for table in progress.bar(migrate_tables):
+            file = self.get_newest_json_file(table)
+            if not file:
+                self.log.debug("JSON file does not exist,"
+                               " for table {} re-running migration".
+                               format(table))
+                migration = obligate.Obligator(self.session)
+                migration.flush_db()
+                migration.migrate()
+                migration.dump_json()
+                file = self.get_newest_json_file(table)
+            self.log.info("newest json file is {}".format(file))
+            data = open(file)
+            self.json_data.update({table: json.load(data)})
+            self._validate_migration(table)
 
-    def _validate_migration(self):
-        self._validate_ip_blocks_to_networks()
-        self._validate_ip_blocks_to_subnets()
-        self._validate_routes_to_routes()
-        self._validate_ip_addresses_to_ip_addresses()
-        self._validate_interfaces_to_ports()
-        self._validate_mac_addresses_to_mac_addresses()
-        self._validate_ip_block_policies_to_policies()
-        self._validate_offsets_to_policy_rules()
+    def _validate_migration(self, tablename):
+        exec("self._validate_{}()".format(tablename))
 
-    def _validate_ip_blocks_to_networks(self):
+    def _validate_networks(self):
         # get_scalar(column, True) <- True == "disctinct" modifier
         blocks_count = self.get_scalar(melange.IpBlocks.network_id, True)
         networks_count = self.get_scalar(quarkmodels.Network.id)
         self._compare_after_migration("IP Blocks", blocks_count,
                                       "Networks", networks_count)
 
-    def _validate_ip_blocks_to_subnets(self):
+    def _validate_subnets(self):
         blocks_count = self.get_scalar(melange.IpBlocks.id)
         subnets_count = self.get_scalar(quarkmodels.Subnet.id)
         self._compare_after_migration("IP Blocks", blocks_count,
                                       "Subnets", subnets_count)
 
-    def _validate_routes_to_routes(self):
+    def _validate_routes(self):
         routes = self.get_scalar(melange.IpRoutes.id)
         qroutes = self.get_scalar(quarkmodels.Route.id)
         err_count = self.count_not_migrated("routes")
         self._compare_after_migration("Routes", routes - err_count,
                                       "Routes", qroutes)
 
-    def _validate_ip_addresses_to_ip_addresses(self):
+    def _validate_ips(self):
         addresses_count = self.get_scalar(melange.IpAddresses.id)
         qaddresses_count = self.get_scalar(quarkmodels.IPAddress.id)
         self._compare_after_migration("IP Addresses", addresses_count,
                                       "IP Addresses", qaddresses_count)
 
-    def _validate_interfaces_to_ports(self):
+    def _validate_interfaces(self):
         interfaces_count = self.get_scalar(melange.Interfaces.id)
         ports_count = self.get_scalar(quarkmodels.Port.id)
         err_count = self.count_not_migrated("interfaces")
@@ -121,7 +118,7 @@ class TestMigration(unittest2.TestCase):
                                       interfaces_count - err_count,
                                       "Ports", ports_count)
 
-    def _validate_mac_addresses_to_mac_addresses(self):
+    def _validate_mac_ranges(self):
         mac_ranges_count = self.get_scalar(melange.MacAddressRanges.id)
         qmac_ranges_count = self.get_scalar(quarkmodels.MacAddressRange.id)
         err_count = self.count_not_migrated("mac_ranges")
@@ -129,8 +126,18 @@ class TestMigration(unittest2.TestCase):
                                       mac_ranges_count - err_count,
                                       "MAC ranges", qmac_ranges_count)
 
-    def _validate_ip_block_policies_to_policies(self):
-        blocks_count = self.get_scalar(melange.IpBlocks.id)
+    def _validate_macs(self):
+        macs_count = self.get_scalar(melange.MacAddresses.id)
+        qmacs_count = self.get_scalar(quarkmodels.MacAddress.address)
+        err_count = self.count_not_migrated("macs")
+        self._compare_after_migration("MACs",
+                                      macs_count - err_count,
+                                      "MACs", qmacs_count)
+
+    def _validate_policies(self):
+        #blocks_count = self.get_scalar(melange.IpBlocks.id)
+        blocks_count = self.session.query(melange.IpBlocks).\
+            filter(melange.IpBlocks.policy_id != None).count()
         qpolicies_count = self.get_scalar(quarkmodels.IPPolicy.id)
         err_count = self.count_not_migrated("policies")
         self._compare_after_migration("IP Block Policies",
@@ -157,7 +164,7 @@ class TestMigration(unittest2.TestCase):
                 total_policy_offsets += len(policy_offsets)
         return total_policy_offsets
 
-    def _validate_offsets_to_policy_rules(self):
+    def _validate_policy_rules(self):
         offsets_count = self._get_policy_offset_total()
         qpolicy_rules_count = self.get_scalar(quarkmodels.IPPolicyRange.id)
         err_count = self.count_not_migrated("policy_rules")
