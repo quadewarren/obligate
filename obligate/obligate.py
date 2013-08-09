@@ -139,6 +139,11 @@ class Obligator(object):
         self.migrate_id(tablename, id)
         self.session.add(item)
 
+    def trim_br(self, network_id):
+        if network_id[:3] == "br-":
+            return network_id[3:]
+        return network_id
+
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
 
@@ -155,29 +160,33 @@ class Obligator(object):
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
         for block in progress.bar(blocks):
-            self.init_id('networks', block.network_id)
-            if block.network_id not in networks:
-                networks[block.network_id] = {
+            self.init_id('networks', self.trim_br(block.network_id))
+            if self.trim_br(block.network_id) not in networks:
+                networks[self.trim_br(block.network_id)] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
                 }
-            elif networks[block.network_id]["tenant_id"] != block.tenant_id:
+            elif networks[self.trim_br(
+                    block.network_id)]["tenant_id"] != block.tenant_id:
                 r = "Found different tenant on network:{0} != {1}"\
-                    .format(networks[block.network_id]["tenant_id"],
-                            block.tenant_id)
+                    .format(networks[self.trim_br(
+                        block.network_id)]["tenant_id"],
+                        block.tenant_id)
                 log.critical(r)
-                self.set_reason('networks', block.network_id, r)
+                self.set_reason('networks', self.trim_br(block.network_id), r)
                 raise Exception
         for net in progress.bar(networks):
             q_network = quarkmodels.Network(id=net,
-                                            tenant_id=networks[net]["tenant_id"],  # noqa
+                                            tenant_id=
+                                            networks[net]["tenant_id"],
                                             name=networks[net]["name"])
             self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
         for block in progress.bar(blocks):
             self.init_id('subnets', block.id)
             q_subnet = quarkmodels.Subnet(id=block.id,
-                                          network_id=block.network_id,
+                                          network_id=
+                                          self.trim_br(block.network_id),
                                           cidr=block.cidr)
             self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             self.migrate_ips(block=block)
@@ -186,7 +195,8 @@ class Obligator(object):
             if block.policy_id:
                 if block.policy_id not in self.policy_ids.keys():
                     self.policy_ids[block.policy_id] = {}
-                self.policy_ids[block.policy_id][block.id] = block.network_id
+                self.policy_ids[block.policy_id][block.id] =\
+                    self.trim_br(block.network_id)
             else:
                 log.warning("Found block without a policy: {0}"
                             .format(block.id))
@@ -227,13 +237,13 @@ class Obligator(object):
             interface = address.interface_id
             if interface is not None and\
                     interface not in self.interface_network:
-                self.interface_network[interface] = block.network_id
+                self.interface_network[interface] = self.trim_br(block.network_id)
             if interface in self.interface_network and\
-                    self.interface_network[interface] != block.network_id:
+                    self.interface_network[interface] != self.trim_br(block.network_id):
                 log.error("Found interface with different "
                           "network id: {0} != {1}"
                           .format(self.interface_network[interface],
-                                  block.network_id))
+                                  self.trim_br(block.network_id)))
             deallocated = False
             deallocated_at = None
             """If marked for deallocation put it into the quark ip table
@@ -249,7 +259,7 @@ class Obligator(object):
             q_ip = quarkmodels.IPAddress(id=address.id,
                                          created_at=address.created_at,
                                          tenant_id=block.tenant_id,
-                                         network_id=block.network_id,
+                                         network_id=self.trim_br(block.network_id),
                                          subnet_id=block.id,
                                          version=version,
                                          address_readable=address.address,
@@ -347,20 +357,7 @@ class Obligator(object):
 
     def migrate_policies(self):
         """
-        Migrate policies (TODO)
-
-        1. Join policies with (ip_ranges, ip_octets)
-        2. Compress and convert ip_ranges, ip_octets with utils list_to_ranges,
-            consolidate_ranges, and ranges_to_offset_lengths
-        3. Count the compressed offsetlengths
-        4. Insert the json data with a migrated == len(compressed_offra)
-        5. ... migrate the objects, increasing migration_count (by 1, each row)
-        -- Testing:
-            a. look at the 'migration_count' for each json element
-            b. grab the len(join quark_ip_policies <- quark_ip_policies_rules)
-            c. compare migration_count to (b.)
-            d. log error if not equal.
-        profit.
+        Migrate policies
         """
         from uuid import uuid4
         octets = self.session.query(melange.IpOctets).all()
@@ -380,6 +377,10 @@ class Obligator(object):
                 self.init_id('policies', policy_uuid)
                 q_ip_policy = quarkmodels.IPPolicy(id=policy_uuid,
                                                    name=policy_name)
+                # log.info("Block ID: {}".format(block_id))
+                # log.info("Network ID: {}".format(policy_block_ids[block_id]))
+                # log.info("Network ID length: {}".
+                #          format(len(policy_block_ids[block_id])))
                 q_network = self.session.query(quarkmodels.Network).\
                     filter(quarkmodels.Network.id ==
                            policy_block_ids[block_id]).first()
