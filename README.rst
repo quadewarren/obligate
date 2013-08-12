@@ -12,3 +12,8 @@ Usage
     ``python main.py``
     
 No args (yet).
+
+Verify migration
+================
+
+    ``tox -e py27``
