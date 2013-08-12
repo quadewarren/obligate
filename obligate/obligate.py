@@ -21,7 +21,7 @@ import netaddr
 from quark.db import models as quarkmodels
 import time
 import traceback
-from utils import logit, to_mac_range, make_offset_lengths
+from utils import logit, to_mac_range, make_offset_lengths, migrate_tables, pad
 
 log = logit('obligate.obligator')
 
@@ -38,11 +38,10 @@ class Obligator(object):
         self.session = session
         file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
         now = datetime.datetime.now()
-        # the json data is for testing purposes and may be removed
-        # in production to increase performance slightly.
-        self.json_filename = 'logs/obligate.{}.json'\
+        self.json_filename = 'logs/obligate.{}'\
             .format(now.strftime(file_timeformat))
         self.json_data = dict()
+        self.migrate_tables = migrate_tables
         self.build_json_structure()
         if not self.session:
             log.warning("No session created when initializing Obligator.")
@@ -51,18 +50,7 @@ class Obligator(object):
         """
         Create the self.json_data structure and populate defaults
         """
-        migrate_tables = ('networks',
-                          'subnets',
-                          'routes',
-                          'ips',
-                          'interfaces',
-                          'allocatable_ips',
-                          'mac_ranges',
-                          'macs',
-                          'policies',
-                          'policy_rules')
-
-        for table in migrate_tables:
+        for table in self.migrate_tables:
             self.json_data[table] = {'num migrated': 0,
                                      'ids': dict()}
 
@@ -80,7 +68,8 @@ class Obligator(object):
                                                     'migration count': num_exp,
                                                     'reason': None}
         except Exception:
-            log.error("Inserting {} on {} failed.".format(id, tablename))
+            log.error("Inserting {} on {} failed.".format(id, tablename),
+                      exc_info=True)
 
     def migrate_id(self, tablename, id):
         try:
@@ -109,8 +98,11 @@ class Obligator(object):
         This should only be called once after self.json_data has been populated
         otherwise the same data will be written multiple times.
         """
-        with open(self.json_filename, 'wb') as fh:
-            json.dump(self.json_data, fh)
+        for tablename in progress.bar(self.migrate_tables,
+                                      label=pad('dump json')):
+            with open('{}.{}.json'.format(self.json_filename, tablename),
+                      'wb') as fh:
+                json.dump(self.json_data[tablename], fh)
 
     def flush_db(self):
         log.debug("drop/create imminent.")
@@ -139,6 +131,11 @@ class Obligator(object):
         self.migrate_id(tablename, id)
         self.session.add(item)
 
+    def trim_br(self, network_id):
+        if network_id[:3] == "br-":
+            return network_id[3:]
+        return network_id
+
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
 
@@ -154,30 +151,34 @@ class Obligator(object):
         networks = dict()
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
-        for block in progress.bar(blocks):
-            self.init_id('networks', block.network_id)
-            if block.network_id not in networks:
-                networks[block.network_id] = {
+        for block in progress.bar(blocks, label=pad('networks cache')):
+            self.init_id('networks', self.trim_br(block.network_id))
+            if self.trim_br(block.network_id) not in networks:
+                networks[self.trim_br(block.network_id)] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
                 }
-            elif networks[block.network_id]["tenant_id"] != block.tenant_id:
+            elif networks[self.trim_br(
+                    block.network_id)]["tenant_id"] != block.tenant_id:
                 r = "Found different tenant on network:{0} != {1}"\
-                    .format(networks[block.network_id]["tenant_id"],
-                            block.tenant_id)
+                    .format(networks[self.trim_br(
+                        block.network_id)]["tenant_id"],
+                        block.tenant_id)
                 log.critical(r)
-                self.set_reason('networks', block.network_id, r)
+                self.set_reason('networks', self.trim_br(block.network_id), r)
                 raise Exception
-        for net in progress.bar(networks):
+        for net in progress.bar(networks, label=pad('networks')):
             q_network = quarkmodels.Network(id=net,
-                                            tenant_id=networks[net]["tenant_id"],  # noqa
+                                            tenant_id=
+                                            networks[net]["tenant_id"],
                                             name=networks[net]["name"])
             self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
-        for block in progress.bar(blocks):
+        for block in progress.bar(blocks, label=pad('subnets')):
             self.init_id('subnets', block.id)
             q_subnet = quarkmodels.Subnet(id=block.id,
-                                          network_id=block.network_id,
+                                          network_id=
+                                          self.trim_br(block.network_id),
                                           cidr=block.cidr)
             self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             self.migrate_ips(block=block)
@@ -186,7 +187,8 @@ class Obligator(object):
             if block.policy_id:
                 if block.policy_id not in self.policy_ids.keys():
                     self.policy_ids[block.policy_id] = {}
-                self.policy_ids[block.policy_id][block.id] = block.network_id
+                self.policy_ids[block.policy_id][block.id] =\
+                    self.trim_br(block.network_id)
             else:
                 log.warning("Found block without a policy: {0}"
                             .format(block.id))
@@ -227,13 +229,15 @@ class Obligator(object):
             interface = address.interface_id
             if interface is not None and\
                     interface not in self.interface_network:
-                self.interface_network[interface] = block.network_id
+                self.interface_network[interface] = \
+                    self.trim_br(block.network_id)
             if interface in self.interface_network and\
-                    self.interface_network[interface] != block.network_id:
+                    self.interface_network[interface] != \
+                    self.trim_br(block.network_id):
                 log.error("Found interface with different "
                           "network id: {0} != {1}"
                           .format(self.interface_network[interface],
-                                  block.network_id))
+                                  self.trim_br(block.network_id)))
             deallocated = False
             deallocated_at = None
             """If marked for deallocation put it into the quark ip table
@@ -249,7 +253,8 @@ class Obligator(object):
             q_ip = quarkmodels.IPAddress(id=address.id,
                                          created_at=address.created_at,
                                          tenant_id=block.tenant_id,
-                                         network_id=block.network_id,
+                                         network_id=
+                                         self.trim_br(block.network_id),
                                          subnet_id=block.id,
                                          version=version,
                                          address_readable=address.address,
@@ -265,7 +270,7 @@ class Obligator(object):
     def migrate_interfaces(self):
         interfaces = self.session.query(melange.Interfaces).all()
         no_network_count = 0
-        for interface in progress.bar(interfaces):
+        for interface in progress.bar(interfaces, label=pad('interfaces')):
             self.init_id("interfaces", interface.id)
             if interface.id not in self.interface_network:
                 self.set_reason("interfaces", interface.id, "no network")
@@ -285,7 +290,7 @@ class Obligator(object):
                  .format(str(no_network_count)))
 
     def associate_ips_with_ports(self):
-        for port in progress.bar(self.port_cache):
+        for port in progress.bar(self.port_cache, label=pad('ports')):
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
                 q_port.ip_addresses.append(ip)
@@ -299,6 +304,7 @@ class Obligator(object):
         import netaddr
         mac_range = self.session.query(melange.MacAddressRanges).first()
         cidr = mac_range.cidr
+        self.init_id('mac_ranges', mac_range.id)
         try:
             cidr, first_address, last_address = to_mac_range(cidr)
         except ValueError as e:
@@ -316,7 +322,7 @@ class Obligator(object):
         self.add_to_session(q_range, 'mac_ranges', q_range.id)
         res = self.session.query(melange.MacAddresses).all()
         no_network_count = 0
-        for mac in progress.bar(res):
+        for mac in progress.bar(res, label=pad('macs')):
             self.init_id('macs', mac.address)
             if mac.interface_id not in self.interface_network:
                 no_network_count += 1
@@ -347,25 +353,13 @@ class Obligator(object):
 
     def migrate_policies(self):
         """
-        Migrate policies (TODO)
-
-        1. Join policies with (ip_ranges, ip_octets)
-        2. Compress and convert ip_ranges, ip_octets with utils list_to_ranges,
-            consolidate_ranges, and ranges_to_offset_lengths
-        3. Count the compressed offsetlengths
-        4. Insert the json data with a migrated == len(compressed_offra)
-        5. ... migrate the objects, increasing migration_count (by 1, each row)
-        -- Testing:
-            a. look at the 'migration_count' for each json element
-            b. grab the len(join quark_ip_policies <- quark_ip_policies_rules)
-            c. compare migration_count to (b.)
-            d. log error if not equal.
-        profit.
+        Migrate policies
         """
         from uuid import uuid4
         octets = self.session.query(melange.IpOctets).all()
         offsets = self.session.query(melange.IpRanges).all()
-        for policy, policy_block_ids in progress.bar(self.policy_ids.items()):
+        for policy, policy_block_ids in progress.bar(self.policy_ids.items(),
+                                                     label=pad('policies')):
             policy_octets = [o.octet for o in octets if o.policy_id == policy]
             policy_rules = [(off.offset, off.length) for off in offsets
                             if off.policy_id == policy]
