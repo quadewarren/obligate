@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 
 
-engine = create_engine("mysql://root:password@localhost/melange", echo=False)
+engine = create_engine("mysql://root:PASSWORDTOCHANGE@localhost/melange", echo=False)
 Base = declarative_base(engine)
 
 
