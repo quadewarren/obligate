@@ -22,7 +22,7 @@ import json
 from obligate.models import melange
 from obligate import obligate
 from obligate.utils import logit, loadSession, make_offset_lengths
-from obligate.utils import migrate_tables
+from obligate.utils import migrate_tables, pad
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func  # noqa
 import unittest2
@@ -34,10 +34,14 @@ class TestMigration(unittest2.TestCase):
         self.json_data = dict()
         self.log = logit('obligate.tests')
 
-    def get_scalar(self, pk_name, is_distinct=False):
+    def get_scalar(self, pk_name, filter=None, is_distinct=False):
         if is_distinct:
             return self.session.query(func.count(distinct(pk_name))).scalar()
-        return self.session.query(func.count(pk_name)).scalar()
+        elif filter:
+            return self.session.query(func.count(pk_name)).\
+                filter(filter[0]).scalar()
+        else:
+            return self.session.query(func.count(pk_name)).scalar()
 
     def count_not_migrated(self, tablename):
         err_count = 0
@@ -65,7 +69,7 @@ class TestMigration(unittest2.TestCase):
             return None
 
     def test_migration(self):
-        for table in progress.bar(migrate_tables):
+        for table in progress.bar(migrate_tables, label=pad('testing')):
             file = self.get_newest_json_file(table)
             if not file:
                 self.log.debug("JSON file does not exist,"
@@ -86,7 +90,7 @@ class TestMigration(unittest2.TestCase):
 
     def _validate_networks(self):
         # get_scalar(column, True) <- True == "disctinct" modifier
-        blocks_count = self.get_scalar(melange.IpBlocks.network_id, True)
+        blocks_count = self.get_scalar(melange.IpBlocks.network_id, [], True)
         networks_count = self.get_scalar(quarkmodels.Network.id)
         self._compare_after_migration("IP Blocks", blocks_count,
                                       "Networks", networks_count)
@@ -136,8 +140,13 @@ class TestMigration(unittest2.TestCase):
 
     def _validate_policies(self):
         #blocks_count = self.get_scalar(melange.IpBlocks.id)
-        blocks_count = self.session.query(melange.IpBlocks).\
-            filter(melange.IpBlocks.policy_id != None).count()
+        #blocks_count = self.session.query(melange.IpBlocks).\
+        #    filter(melange.IpBlocks.policy_id is not None).count()
+        # filt = ["filter(melange.IpBlocks.policy_id != None)",
+        #         "count()"]
+        # blocks_count = self.get_scalar(melange.IpBlocks, filters=filt)
+        blocks_count = self.get_scalar(melange.IpBlocks.id,
+                                       filter=[melange.IpBlocks.policy_id != None])  # noqa
         qpolicies_count = self.get_scalar(quarkmodels.IPPolicy.id)
         err_count = self.count_not_migrated("policies")
         self._compare_after_migration("IP Block Policies",

@@ -21,7 +21,7 @@ import netaddr
 from quark.db import models as quarkmodels
 import time
 import traceback
-from utils import logit, to_mac_range, make_offset_lengths, migrate_tables
+from utils import logit, to_mac_range, make_offset_lengths, migrate_tables, pad
 
 log = logit('obligate.obligator')
 
@@ -98,7 +98,8 @@ class Obligator(object):
         This should only be called once after self.json_data has been populated
         otherwise the same data will be written multiple times.
         """
-        for tablename in progress.bar(self.migrate_tables):
+        for tablename in progress.bar(self.migrate_tables,
+                                      label=pad('dump json')):
             with open('{}.{}.json'.format(self.json_filename, tablename),
                       'wb') as fh:
                 json.dump(self.json_data[tablename], fh)
@@ -150,7 +151,7 @@ class Obligator(object):
         networks = dict()
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
-        for block in progress.bar(blocks):
+        for block in progress.bar(blocks, label=pad('networks cache')):
             self.init_id('networks', self.trim_br(block.network_id))
             if self.trim_br(block.network_id) not in networks:
                 networks[self.trim_br(block.network_id)] = {
@@ -166,14 +167,14 @@ class Obligator(object):
                 log.critical(r)
                 self.set_reason('networks', self.trim_br(block.network_id), r)
                 raise Exception
-        for net in progress.bar(networks):
+        for net in progress.bar(networks, label=pad('networks')):
             q_network = quarkmodels.Network(id=net,
                                             tenant_id=
                                             networks[net]["tenant_id"],
                                             name=networks[net]["name"])
             self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
-        for block in progress.bar(blocks):
+        for block in progress.bar(blocks, label=pad('subnets')):
             self.init_id('subnets', block.id)
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=
@@ -269,7 +270,7 @@ class Obligator(object):
     def migrate_interfaces(self):
         interfaces = self.session.query(melange.Interfaces).all()
         no_network_count = 0
-        for interface in progress.bar(interfaces):
+        for interface in progress.bar(interfaces, label=pad('interfaces')):
             self.init_id("interfaces", interface.id)
             if interface.id not in self.interface_network:
                 self.set_reason("interfaces", interface.id, "no network")
@@ -289,7 +290,7 @@ class Obligator(object):
                  .format(str(no_network_count)))
 
     def associate_ips_with_ports(self):
-        for port in progress.bar(self.port_cache):
+        for port in progress.bar(self.port_cache, label=pad('ports')):
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
                 q_port.ip_addresses.append(ip)
@@ -321,7 +322,7 @@ class Obligator(object):
         self.add_to_session(q_range, 'mac_ranges', q_range.id)
         res = self.session.query(melange.MacAddresses).all()
         no_network_count = 0
-        for mac in progress.bar(res):
+        for mac in progress.bar(res, label=pad('macs')):
             self.init_id('macs', mac.address)
             if mac.interface_id not in self.interface_network:
                 no_network_count += 1
@@ -357,7 +358,8 @@ class Obligator(object):
         from uuid import uuid4
         octets = self.session.query(melange.IpOctets).all()
         offsets = self.session.query(melange.IpRanges).all()
-        for policy, policy_block_ids in progress.bar(self.policy_ids.items()):
+        for policy, policy_block_ids in progress.bar(self.policy_ids.items(),
+                                                     label=pad('policies')):
             policy_octets = [o.octet for o in octets if o.policy_id == policy]
             policy_rules = [(off.offset, off.length) for off in offsets
                             if off.policy_id == policy]
