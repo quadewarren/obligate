@@ -2,6 +2,10 @@ Obligate
 ===========
 Migrates the Melange database to Quark.
 
+System Requirements
+===================
+Obligate will hang indefinitely on any flavor with less than 2GB of ram, so you should upgrade your flavor if this is the case.
+
 Install
 ============
 Have the following installed:
@@ -19,7 +23,7 @@ Now you can run the install script included in this repo:
 Usage
 =====
     ``tox -e py27``
-    
+
 
 If all goes well you should see a green "Congratulations :)". 
 If you don't, contact: john.perkins@rackspace.com xor justin.hammond@rackspace.com xor jason.meridth@rackspace.com
