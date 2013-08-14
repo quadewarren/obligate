@@ -14,7 +14,7 @@ sudo apt-get install mysql-server build-essential git-core libmysqlclient-dev py
 pip install virtualenv tox
 
 *IMPORTANT:*
-Set the database root password in obligate/models/melange.py
+Set the database root username and password in ".config"
 
 
 Now you can run the install script included in this repo:

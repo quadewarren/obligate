@@ -11,3 +11,4 @@ prod_*
 logs/
 .tox/
 *.egg*/
+.config
