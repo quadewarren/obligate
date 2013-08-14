@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 
 
-engine = create_engine("mysql://root:pomegranete__passage@localhost/melange", echo=False)
+engine = create_engine("mysql://root:CHANGEME@localhost/melange", echo=False)  # noqa
 Base = declarative_base(engine)
 
 
