@@ -6,6 +6,12 @@ from sqlalchemy.orm import sessionmaker
 import sys
 
 
+def trim_br(network_id):
+    if network_id[:3] == "br-":
+        return network_id[3:]
+    return network_id
+
+
 def pad(label):
     return " " * (20 - len(label)) + label + ': '
 
