@@ -23,4 +23,5 @@ install_virtual_environment
 source .venv/bin/activate
 pip install --upgrade pip distribute
 pip_install
+echo '[db]\nuser=root\npassword=CHANGEME\n' > .config
 echo 'Obligate installed ok.'

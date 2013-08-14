@@ -14,9 +14,19 @@
 # limitations under the License.
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
+import os
+import ConfigParser as cfgp
 
+basepath = os.path.dirname(os.path.realpath(__file__))
+basepath = os.path.abspath(os.path.join(basepath, os.pardir))
+config = cfgp.ConfigParser()
+config_file_path = "{}/../.config".format(basepath)
+config.read(config_file_path)
+username = config.get('db', 'user', 'changeuserinconfig')
+password = config.get('db', 'password', 'changepasswordinconfig')
 
-engine = create_engine("mysql://root:CHANGEME@localhost/melange", echo=False)  # noqa
+engine = create_engine("mysql://{}:{}@localhost/melange".
+                       format(username, password), echo=False)
 Base = declarative_base(engine)
 
 
