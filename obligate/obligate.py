@@ -22,6 +22,7 @@ from quark.db import models as quarkmodels
 import time
 import traceback
 from utils import logit, to_mac_range, make_offset_lengths, migrate_tables, pad
+from utils import trim_br
 
 log = logit('obligate.obligator')
 
@@ -131,11 +132,6 @@ class Obligator(object):
         self.migrate_id(tablename, id)
         self.session.add(item)
 
-    def trim_br(self, network_id):
-        if network_id[:3] == "br-":
-            return network_id[3:]
-        return network_id
-
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
 
@@ -152,20 +148,20 @@ class Obligator(object):
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
         for block in progress.bar(blocks, label=pad('networks cache')):
-            self.init_id('networks', self.trim_br(block.network_id))
-            if self.trim_br(block.network_id) not in networks:
-                networks[self.trim_br(block.network_id)] = {
+            self.init_id('networks', trim_br(block.network_id))
+            if trim_br(block.network_id) not in networks:
+                networks[trim_br(block.network_id)] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
                 }
-            elif networks[self.trim_br(
+            elif networks[trim_br(
                     block.network_id)]["tenant_id"] != block.tenant_id:
                 r = "Found different tenant on network:{0} != {1}"\
-                    .format(networks[self.trim_br(
+                    .format(networks[trim_br(
                         block.network_id)]["tenant_id"],
                         block.tenant_id)
                 log.critical(r)
-                self.set_reason('networks', self.trim_br(block.network_id), r)
+                self.set_reason('networks', trim_br(block.network_id), r)
                 raise Exception
         for net in progress.bar(networks, label=pad('networks')):
             q_network = quarkmodels.Network(id=net,
@@ -178,7 +174,8 @@ class Obligator(object):
             self.init_id('subnets', block.id)
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=
-                                          self.trim_br(block.network_id),
+                                          trim_br(block.network_id),
+                                          tenant_id=block.tenant_id,
                                           cidr=block.cidr)
             self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             self.migrate_ips(block=block)
@@ -188,7 +185,7 @@ class Obligator(object):
                 if block.policy_id not in self.policy_ids.keys():
                     self.policy_ids[block.policy_id] = {}
                 self.policy_ids[block.policy_id][block.id] =\
-                    self.trim_br(block.network_id)
+                    trim_br(block.network_id)
             else:
                 log.warning("Found block without a policy: {0}"
                             .format(block.id))
@@ -230,14 +227,14 @@ class Obligator(object):
             if interface is not None and\
                     interface not in self.interface_network:
                 self.interface_network[interface] = \
-                    self.trim_br(block.network_id)
+                    trim_br(block.network_id)
             if interface in self.interface_network and\
                     self.interface_network[interface] != \
-                    self.trim_br(block.network_id):
+                    trim_br(block.network_id):
                 log.error("Found interface with different "
                           "network id: {0} != {1}"
                           .format(self.interface_network[interface],
-                                  self.trim_br(block.network_id)))
+                                  trim_br(block.network_id)))
             deallocated = False
             deallocated_at = None
             """If marked for deallocation put it into the quark ip table
@@ -247,20 +244,18 @@ class Obligator(object):
                 deallocated = True
                 deallocated_at = address.deallocated_at
 
-            preip = netaddr.IPAddress(address.address)
-            version = preip.version
-            ip = netaddr.IPAddress(address.address).ipv6()
+            ip_address = netaddr.IPAddress(address.address)
             q_ip = quarkmodels.IPAddress(id=address.id,
                                          created_at=address.created_at,
                                          tenant_id=block.tenant_id,
                                          network_id=
-                                         self.trim_br(block.network_id),
+                                         trim_br(block.network_id),
                                          subnet_id=block.id,
-                                         version=version,
+                                         version=ip_address.version,
                                          address_readable=address.address,
                                          deallocated_at=deallocated_at,
                                          _deallocated=deallocated,
-                                         address=int(ip))
+                                         address=int(ip_address.ipv6()))
             """Populate interface_ip cache"""
             if interface not in self.interface_ip:
                 self.interface_ip[interface] = set()

@@ -22,7 +22,7 @@ import json
 from obligate.models import melange
 from obligate import obligate
 from obligate.utils import logit, loadSession, make_offset_lengths
-from obligate.utils import migrate_tables, pad
+from obligate.utils import migrate_tables, pad, trim_br
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func  # noqa
 import unittest2
@@ -94,12 +94,24 @@ class TestMigration(unittest2.TestCase):
         networks_count = self.get_scalar(quarkmodels.Network.id)
         self._compare_after_migration("IP Blocks", blocks_count,
                                       "Networks", networks_count)
+        _block = self.session.query(melange.IpBlocks).first()
+        _network = self.session.query(quarkmodels.Network).\
+            filter(quarkmodels.Network.id == _block.network_id).first()
+        self.assertEqual(trim_br(_block.network_id), _network.id)
+        self.assertEqual(_block.tenant_id, _network.tenant_id)
+        self.assertEqual(_block.network_name, _network.name)
 
     def _validate_subnets(self):
         blocks_count = self.get_scalar(melange.IpBlocks.id)
         subnets_count = self.get_scalar(quarkmodels.Subnet.id)
         self._compare_after_migration("IP Blocks", blocks_count,
                                       "Subnets", subnets_count)
+        _ipblock = self.session.query(melange.IpBlocks).first()
+        _subnet = self.session.query(quarkmodels.Subnet).\
+            filter(quarkmodels.Subnet.id == _ipblock.id).first()
+        self.assertEqual(_subnet.tenant_id, _ipblock.tenant_id)
+        self.assertEqual(_subnet.network_id, _ipblock.network_id)
+        self.assertEqual(_subnet._cidr, _ipblock.cidr)
 
     def _validate_routes(self):
         routes = self.get_scalar(melange.IpRoutes.id)
@@ -107,12 +119,38 @@ class TestMigration(unittest2.TestCase):
         err_count = self.count_not_migrated("routes")
         self._compare_after_migration("Routes", routes - err_count,
                                       "Routes", qroutes)
+        _route = self.session.query(melange.IpRoutes).first()
+        _ipblock = self.session.query(melange.IpBlocks).\
+            filter(melange.IpBlocks.id == _route.source_block_id).first()
+        _qroute = self.session.query(quarkmodels.Route).\
+            filter(quarkmodels.Route.id == _route.id).first()
+        self.assertEqual(_qroute.cidr, _route.netmask)
+        self.assertEqual(_qroute.tenant_id, _ipblock.tenant_id)
+        self.assertEqual(_qroute.gateway, _route.gateway)
+        self.assertEqual(_qroute.created_at, _ipblock.created_at)
+        self.assertEqual(_qroute.subnet_id, _ipblock.id)
 
     def _validate_ips(self):
+        import netaddr
         addresses_count = self.get_scalar(melange.IpAddresses.id)
         qaddresses_count = self.get_scalar(quarkmodels.IPAddress.id)
         self._compare_after_migration("IP Addresses", addresses_count,
                                       "IP Addresses", qaddresses_count)
+        _ip_addr = self.session.query(melange.IpAddresses).first()
+        _ipblock = self.session.query(melange.IpBlocks).\
+            filter(melange.IpBlocks.id == _ip_addr.ip_block_id).first()
+        _q_ip_addr = self.session.query(quarkmodels.IPAddress).\
+            filter(quarkmodels.IPAddress.id == _ip_addr.id).first()  # noqa
+        _ip_address = netaddr.IPAddress(_ip_addr.address)
+        self.assertEqual(_q_ip_addr.created_at, _ip_addr.created_at)
+        self.assertEqual(_q_ip_addr.tenant_id, _ipblock.tenant_id)
+        self.assertEqual(_q_ip_addr.network_id, trim_br(_ipblock.network_id))
+        self.assertEqual(_q_ip_addr.subnet_id, _ipblock.id)
+        self.assertEqual(_q_ip_addr.version, _ip_address.version)
+        self.assertEqual(_q_ip_addr.address_readable, _ip_addr.address)
+        self.assertTrue(_q_ip_addr.deallocated_at ==
+                        None or _ip_addr.deallocated_at)
+        self.assertEqual(int(_q_ip_addr.address), int(_ip_address.ipv6()))
 
     def _validate_interfaces(self):
         interfaces_count = self.get_scalar(melange.Interfaces.id)
@@ -121,6 +159,28 @@ class TestMigration(unittest2.TestCase):
         self._compare_after_migration("Interfaces",
                                       interfaces_count - err_count,
                                       "Ports", ports_count)
+        # in Quark, it's easy to connect a port to a network
+        # in melange, you must join on ip_addresses
+        _interface = self.session.query(melange.Interfaces).first()
+        _network_query = self.session.query(melange.IpBlocks).\
+            join(melange.IpAddresses).\
+            join(melange.Interfaces)
+        self.log.info("THE INTERFACE ID IS {}".format(_interface.id))
+        _network_filter = _network_query.filter(_interface.id == melange.IpAddresses.interface_id)
+        self.log.info("THE QUERY WITH FILTER IS {}".format(str(_network_filter)))
+
+        _network = _network_filter.first()
+        _port = self.session.query(quarkmodels.Port).\
+            filter(quarkmodels.Port.id == _interface.id).first()
+        self.assertEqual(_port.device_id, _interface.device_id)
+        self.assertEqual(_port.tenant_id, _interface.tenant_id)
+        self.assertEqual(_port.created_at, _interface.created_at)
+        self.assertEqual(_port.backend_key, "NVP_TEMP_KEY")
+        self.assertEqual(_port.network_id, _network.id)
+
+        # _network = self.session.query(melange.IpBlocks).\
+        #    filter(melange.IpBlocks.id == ).first()
+        # _qinterface = self.session.query().first()
 
     def _validate_mac_ranges(self):
         mac_ranges_count = self.get_scalar(melange.MacAddressRanges.id)
@@ -129,6 +189,9 @@ class TestMigration(unittest2.TestCase):
         self._compare_after_migration("MAC ranges",
                                       mac_ranges_count - err_count,
                                       "MAC ranges", qmac_ranges_count)
+        _mac_range = self.session.query(melange.MacAddressRange).first()
+        _q_mac_range = self.session.query(quarkmodels.MacAddressRange).first()
+        self.assertEqual(_mac_range.cidr, _q_mac_range.cidr)
 
     def _validate_macs(self):
         macs_count = self.get_scalar(melange.MacAddresses.id)
