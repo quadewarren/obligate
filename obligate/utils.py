@@ -27,6 +27,12 @@ migrate_tables = ('networks',
                   'policy_rules')
 
 
+def get_basepath():
+    basepath = os.path.dirname(os.path.realpath(__file__))
+    basepath = os.path.abspath(os.path.join(basepath, os.pardir))
+    return basepath
+
+
 def logit(name):
     """no doc."""
     log_format = "{} {}\t{}:{}\t{}".format('%(asctime)s',
@@ -37,8 +43,7 @@ def logit(name):
     log_dateformat = '%m/%d/%Y %I:%M:%S %p'
     file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
     now = datetime.datetime.now()
-    basepath = os.path.dirname(os.path.realpath(__file__))
-    basepath = os.path.abspath(os.path.join(basepath, os.pardir))
+    basepath = get_basepath()
     filename_format = '{}/logs/obligate.{}.log'\
         .format(basepath, now.strftime(file_timeformat))
     # create the logs directory if it doesn't exist
@@ -49,7 +54,6 @@ def logit(name):
                     filename=filename_format,
                     filemode='w',
                     level=log.DEBUG)
-
     root = log.getLogger(name)
     ch = log.StreamHandler(sys.stdout)
     ch.setLevel(log.DEBUG)
