@@ -24,4 +24,5 @@ source .venv/bin/activate
 pip install --upgrade pip distribute
 pip_install
 echo '[db]\nuser=root\npassword=CHANGEME\n' > .config
-echo 'Obligate installed ok.'
+echo '\n\nObligate installed ok.'
+echo 'Please set the database credentials in .config before proceeding.'

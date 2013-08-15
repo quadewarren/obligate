@@ -349,10 +349,16 @@ class Obligator(object):
     def migrate_policies(self):
         """
         Migrate policies
+
+        We exclude the default policies.  These are octets that are 0 or
+        ip ranges that have offset 0 and length 1.
         """
         from uuid import uuid4
         octets = self.session.query(melange.IpOctets).all()
+        #     filter(melange.IpOctets.octet != 0).all()
         offsets = self.session.query(melange.IpRanges).all()
+        #     filter(melange.IpRanges.offset != 0 and
+        #            melange.IpRanges.length != 1).all()
         for policy, policy_block_ids in progress.bar(self.policy_ids.items(),
                                                      label=pad('policies')):
             policy_octets = [o.octet for o in octets if o.policy_id == policy]
@@ -367,11 +373,13 @@ class Obligator(object):
             for block_id in policy_block_ids.keys():
                 policy_uuid = str(uuid4())
                 self.init_id('policies', policy_uuid)
-                q_ip_policy = quarkmodels.IPPolicy(id=policy_uuid,
-                                                   name=policy_name)
                 q_network = self.session.query(quarkmodels.Network).\
                     filter(quarkmodels.Network.id ==
                            policy_block_ids[block_id]).first()
+                q_ip_policy = quarkmodels.IPPolicy(id=policy_uuid,
+                                                   tenant_id=
+                                                   q_network.tenant_id,
+                                                   name=policy_name)
                 q_ip_policy.networks.append(q_network)
                 q_subnet = self.session.query(quarkmodels.Subnet).\
                     filter(quarkmodels.Subnet.id == block_id).first()
