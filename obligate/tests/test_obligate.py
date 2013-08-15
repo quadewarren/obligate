@@ -174,29 +174,19 @@ class TestMigration(unittest2.TestCase):
         self._compare_after_migration("Interfaces",
                                       interfaces_count - err_count,
                                       "Ports", ports_count)
-        # in Quark, it's easy to connect a port to a network
-        # in melange, you must join on ip_addresses
         _interface = self.session.query(melange.Interfaces).first()
         _network_query = self.session.query(melange.IpBlocks).\
-            join(melange.IpAddresses).\
-            join(melange.Interfaces)
-        # self.log.info("THE INTERFACE ID IS {}".format(_interface.id))
-        _network_filter = _network_query.filter(_interface.id == melange.IpAddresses.interface_id)
-        # self.log.info("THE QUERY WITH FILTER IS {}".format(str(_network_filter)))
-
-        _network = _network_filter.first()
+            join(melange.IpAddresses)
+        _network_filter = _network_query.\
+            filter(_interface.id == melange.IpAddresses.interface_id)
+        _networks = _network_filter.all()
         _port = self.session.query(quarkmodels.Port).\
             filter(quarkmodels.Port.id == _interface.id).first()
         self.assertEqual(_port.device_id, _interface.device_id)
         self.assertEqual(_port.tenant_id, _interface.tenant_id)
         self.assertEqual(_port.created_at, _interface.created_at)
         self.assertEqual(_port.backend_key, "NVP_TEMP_KEY")
-        # SOON DEAR TEST, SOON
-        # self.assertEqual(_port.network_id, _network.id)
-
-        # _network = self.session.query(melange.IpBlocks).\
-        #    filter(melange.IpBlocks.id == ).first()
-        # _qinterface = self.session.query().first()
+        self.assertTrue(_port.network_id in [n.network_id for n in _networks])
 
     def _validate_mac_ranges(self):
         mac_ranges_count = self.get_scalar(melange.MacAddressRanges.id)
@@ -237,31 +227,6 @@ class TestMigration(unittest2.TestCase):
         self._compare_after_migration("IP Block Policies",
                                       blocks_count - err_count,
                                       "Policies", qpolicies_count)
-        # this is a tough one... gotta trust the utils
-        # TODO
-        # _block = self.session.query(melange.IpBlocks).\
-        #     join(melange.Policies).\
-        #     filter(melange.IpBlocks.policy_id != None).\
-        #     filter(melange.Policies.name != None).first()
-        # _policy = self.session.query(melange.Policies).\
-        #     filter(melange.Policies.id == _block.policy_id).first()
-        # _q_network = self.session.query(quarkmodels.Network).\
-        #     filter(quarkmodels.Network.id == _block.network_id).first()
-        # _q_policy = self.session.query(quarkmodels.IPPolicy).\
-        #     filter(quarkmodels.IPPolicy.id == _q_network.id).first()
-        # self.assertEqual(_q_policy.name, _policy.name)
-        # self.assertEqual(_q_policy.
-        # _q_policy = self.session.query(quarkmodels.IPPolicy).\
-        #    filter(quarkmodels.IPPolicy.name == _policy.name).first()
-        # assert.NotNull(_q_policy)
-        # _octets = self.session.query(melange.IpOctets).\
-        #    filter(melange.IpOctets.policy_id == _policy.id)
-        # _ranges = self.session.query(melange.IpRanges).\
-        #     filter(melange.IpRanges.policy_id == _policy.id)
-        # tmp_octets = [o.octet for o in _octets]
-        # tmp_ranges = [(r.offset, r.length) for r in _ranges]
-        # something = make_offset_lengths(tmp_octets, tmp_ranges)
-        # raise Exception(something)
 
     def _get_policy_offset_total(self):
         total_policy_offsets = 0
@@ -304,17 +269,20 @@ class TestMigration(unittest2.TestCase):
         tmp_octets = [o.octet for o in _octets]
         tmp_ranges = [(r.offset, r.length) for r in _ranges]
         # tmp store the converted, compressed policies:
-        something = make_offset_lengths(tmp_octets, tmp_ranges)
+        _expected = make_offset_lengths(tmp_octets, tmp_ranges)
         #get the matching quark policies:
         _q_network = self.session.query(quarkmodels.Network).\
             filter(quarkmodels.Network.id == _block.network_id).first()
         _q_policy = self.session.query(quarkmodels.IPPolicy).\
-            filter(quarkmodels.IPPolicy.network_id == _q_network.id).all()
-        _q_policy_rules = self.session.query(quarkmodels.IpPolicyRange).\
-            filter(quarkmodels.IpPolicyRange.ip_policy_id == _q_policy.id).\
-            all()
-        raise Exception(something)
-        # assertEqual(something, somethingelse)
+            filter(quarkmodels.IPPolicy.tenant_id ==
+                   _q_network.tenant_id).first()
+        _actual = list()
+        _q_policy_rules = self.session.query(quarkmodels.IPPolicyRange).\
+            filter(quarkmodels.IPPolicyRange.ip_policy_id ==
+                   _q_policy.id).all()
+        for range in _q_policy_rules:
+            _actual.append((range.offset, range.length))
+        self.assertEqual(_expected, _actual)
 
     def _compare_after_migration(self, melange_type, melange_count,
                                  quark_type, quark_count):
