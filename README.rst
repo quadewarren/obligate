@@ -13,12 +13,12 @@ Have the following installed:
 sudo apt-get install mysql-server build-essential git-core libmysqlclient-dev python-dev python-pip
 pip install virtualenv tox
 
-*IMPORTANT:*
-Set the database root username and password in ".config"
-
 
 Now you can run the install script included in this repo:
     ``./install.sh``
+    
+*IMPORTANT:*
+Set the database root username and password in ".config"
 
 Usage
 =====
