@@ -11,6 +11,7 @@ Install
 Have the following installed:
 
 sudo apt-get install mysql-server build-essential git-core libmysqlclient-dev python-dev python-pip
+
 pip install virtualenv tox
 
 
