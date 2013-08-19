@@ -11,31 +11,6 @@ chex() {
 install_virtual_environment() {
     virtualenv --prompt='(obligate)' --distribute --no-site-packages .venv
     chex $? "Error creating virtual environment"
-    source .venv/bin/activate
-}
-
-setup_lib_directory() {
-    mkdir lib
-}
-
-get_neutron() {
-    cd lib
-    git clone https://github.com/openstack/neutron.git
-    chex $? "Error cloning neutron Git repository"
-    cd neutron
-    python setup.py develop
-    chex $? "Error running neutron setup.py"
-    cd ../..
-}
-
-get_quark() {
-    cd lib
-    git clone https://github.com/jkoelker/quark.git
-    chex $? "Error cloning quark Git repository"
-    cd quark
-    python setup.py develop
-    chex $? "Error running quark setup.py"
-    cd ../..
 }
 
 pip_install() {
@@ -43,10 +18,19 @@ pip_install() {
    chex $? "Error running pip install"
 }
 
-
+unset PYTHONDONTWRITEBYTECODE
 install_virtual_environment
-setup_lib_directory
-get_neutron
-get_quark
+source .venv/bin/activate
+pip install --upgrade pip distribute
 pip_install
+
+if [ ! -f .config ]; then
+    echo '[db]' > .config
+    echo 'user=root' >> .config
+    echo 'password=CHANGEME' >> .config
+fi
+
+echo
 echo 'Obligate installed ok.'
+echo 'Important:'
+echo 'Please set the database credentials in .config before proceeding.'

@@ -8,3 +8,7 @@ sqlwork
 lib/
 prod_*
 *.log
+logs/
+.tox/
+*.egg*/
+.config
