@@ -23,6 +23,14 @@ install_virtual_environment
 source .venv/bin/activate
 pip install --upgrade pip distribute
 pip_install
-echo '[db]\nuser=root\npassword=CHANGEME\n' > .config
-echo '\n\nObligate installed ok.'
+
+if [ ! -f .config ]; then
+    echo '[db]' > .config
+    echo 'user=root' >> .config
+    echo 'password=CHANGEME' >> .config
+fi
+
+echo
+echo 'Obligate installed ok.'
+echo 'Important:'
 echo 'Please set the database credentials in .config before proceeding.'
