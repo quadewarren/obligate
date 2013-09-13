@@ -16,7 +16,7 @@ from clint.textui import colored
 from clint.textui import progress
 import datetime
 import json
-from models import melange
+from models import melange, neutron
 import netaddr
 from quark.db import models as quarkmodels
 import time
@@ -28,7 +28,7 @@ log = logit('obligate.obligator')
 
 
 class Obligator(object):
-    def __init__(self, session=None):
+    def __init__(self, melange_sess=None, neutron_sess=None):
         self.error_free = True
         self.interface_tenant = dict()
         self.interfaces = dict()
@@ -36,7 +36,8 @@ class Obligator(object):
         self.interface_ip = dict()
         self.port_cache = dict()
         self.policy_ids = dict()
-        self.session = session
+        self.melange_session = melange_sess
+        self.neutron_session = neutron_sess
         file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
         now = datetime.datetime.now()
         self.json_filename = 'logs/obligate.{}'\
@@ -44,8 +45,9 @@ class Obligator(object):
         self.json_data = dict()
         self.migrate_tables = migrate_tables
         self.build_json_structure()
-        if not self.session:
-            log.warning("No session created when initializing Obligator.")
+        if not self.melange_session:
+            log.warning("No melange session created when initializing"
+                        " Obligator.")
 
     def build_json_structure(self):
         """
@@ -108,8 +110,10 @@ class Obligator(object):
     def flush_db(self):
         log.debug("drop/create imminent.")
         quarkmodels.BASEV2.metadata.drop_all(melange.engine)
+        quarkmodels.BASEV2.metadata.drop_all(neutron.engine)
         log.debug("drop_all complete")
         quarkmodels.BASEV2.metadata.create_all(melange.engine)
+        quarkmodels.BASEV2.metadata.create_all(neutron.engine)
         log.debug("create_all complete.")
 
     def do_and_time(self, label, fx, **kwargs):
@@ -130,7 +134,7 @@ class Obligator(object):
 
     def add_to_session(self, item, tablename, id):
         self.migrate_id(tablename, id)
-        self.session.add(item)
+        self.neutron_session.add(item)
 
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
@@ -143,7 +147,7 @@ class Obligator(object):
         An ip_block has a cidr which maps to a corresponding subnet
         in quark.
         """
-        blocks = self.session.query(melange.IpBlocks).all()
+        blocks = self.melange_session.query(melange.IpBlocks).all()
         networks = dict()
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
@@ -194,7 +198,7 @@ class Obligator(object):
                  .format(len(self.policy_ids), blocks_without_policy))
 
     def migrate_routes(self, block=None):
-        routes = self.session.query(melange.IpRoutes)\
+        routes = self.melange_session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
             self.init_id('routes', route.id)
@@ -218,7 +222,7 @@ class Obligator(object):
         then be possible to create a q.subnet connected to the network.
 
         """
-        addresses = self.session.query(melange.IpAddresses)\
+        addresses = self.melange_session.query(melange.IpAddresses)\
             .filter_by(ip_block_id=block.id).all()
         for address in addresses:
             self.init_id('ips', address.id)
@@ -263,7 +267,7 @@ class Obligator(object):
             self.add_to_session(q_ip, 'ips', q_ip.id)
 
     def migrate_interfaces(self):
-        interfaces = self.session.query(melange.Interfaces).all()
+        interfaces = self.melange_session.query(melange.Interfaces).all()
         no_network_count = 0
         for interface in progress.bar(interfaces, label=pad('interfaces')):
             self.init_id("interfaces", interface.id)
@@ -297,7 +301,8 @@ class Obligator(object):
         """
         """Only migrating the first mac_address_range from melange."""
         import netaddr
-        mac_range = self.session.query(melange.MacAddressRanges).first()
+        mac_range = self.melange_session.query(
+            melange.MacAddressRanges).first()
         cidr = mac_range.cidr
         self.init_id('mac_ranges', mac_range.id)
         try:
@@ -315,7 +320,7 @@ class Obligator(object):
                                               next_auto_assign_mac=first_address,  # noqa
                                               last_address=last_address)
         self.add_to_session(q_range, 'mac_ranges', q_range.id)
-        res = self.session.query(melange.MacAddresses).all()
+        res = self.melange_session.query(melange.MacAddresses).all()
         no_network_count = 0
         for mac in progress.bar(res, label=pad('macs')):
             self.init_id('macs', mac.address)
@@ -323,7 +328,6 @@ class Obligator(object):
                 no_network_count += 1
                 r = "mac.interface_id {0} not in self.interface_network"\
                     .format(mac.interface_id)
-                # log.info(r)
                 self.set_reason('macs', mac.address, r)
                 continue
             tenant_id = self.interface_tenant[mac.interface_id]
@@ -334,7 +338,6 @@ class Obligator(object):
             q_port = self.port_cache[mac.interface_id]
             q_port.mac_address = q_mac.address
             self.add_to_session(q_mac, 'macs', q_mac.address)
-            self.session.add(q_mac)
         log.info("skipped {0} mac addresses".format(str(no_network_count)))
 
     def _octet_to_cidr(self, octet, ipv4_compatible=False):
@@ -354,11 +357,8 @@ class Obligator(object):
         ip ranges that have offset 0 and length 1.
         """
         from uuid import uuid4
-        octets = self.session.query(melange.IpOctets).all()
-        #     filter(melange.IpOctets.octet != 0).all()
-        offsets = self.session.query(melange.IpRanges).all()
-        #     filter(melange.IpRanges.offset != 0 and
-        #            melange.IpRanges.length != 1).all()
+        octets = self.melange_session.query(melange.IpOctets).all()
+        offsets = self.melange_session.query(melange.IpRanges).all()
         for policy, policy_block_ids in progress.bar(self.policy_ids.items(),
                                                      label=pad('policies')):
             policy_octets = [o.octet for o in octets if o.policy_id == policy]
@@ -366,14 +366,15 @@ class Obligator(object):
                             if off.policy_id == policy]
             policy_rules = make_offset_lengths(policy_octets, policy_rules)
             try:
-                policy_name = self.session.query(melange.Policies.name).\
+                policy_name = self.melange_session.query(
+                    melange.Policies.name).\
                     filter(melange.Policies.id == policy).first()[0]
             except Exception:
                 policy_name = None
             for block_id in policy_block_ids.keys():
                 policy_uuid = str(uuid4())
                 self.init_id('policies', policy_uuid)
-                q_network = self.session.query(quarkmodels.Network).\
+                q_network = self.neutron_session.query(quarkmodels.Network).\
                     filter(quarkmodels.Network.id ==
                            policy_block_ids[block_id]).first()
                 q_ip_policy = quarkmodels.IPPolicy(id=policy_uuid,
@@ -381,7 +382,7 @@ class Obligator(object):
                                                    q_network.tenant_id,
                                                    name=policy_name)
                 q_ip_policy.networks.append(q_network)
-                q_subnet = self.session.query(quarkmodels.Subnet).\
+                q_subnet = self.neutron_session.query(quarkmodels.Subnet).\
                     filter(quarkmodels.Subnet.id == block_id).first()
                 q_ip_policy.subnets.append(q_subnet)
                 self.add_to_session(q_ip_policy, 'policies', policy_uuid)
@@ -398,7 +399,7 @@ class Obligator(object):
 
     def migrate_commit(self):
         """4. Commit the changes to the database"""
-        self.session.commit()
+        self.neutron_session.commit()
 
     def migrate(self):
         """
