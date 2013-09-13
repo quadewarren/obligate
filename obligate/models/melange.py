@@ -19,14 +19,20 @@ import ConfigParser as cfgp
 
 basepath = os.path.dirname(os.path.realpath(__file__))
 basepath = os.path.abspath(os.path.join(basepath, os.pardir))
+
 config = cfgp.ConfigParser()
 config_file_path = "{}/../.config".format(basepath)
 config.read(config_file_path)
-username = config.get('db', 'user', 'changeuserinconfig')
-password = config.get('db', 'password', 'changepasswordinconfig')
 
-engine = create_engine("mysql://{}:{}@localhost/melange".
-                       format(username, password), echo=False)
+username = config.get('source_db', 'user', 'changeuserinconfig')
+password = config.get('source_db', 'password', 'changepasswordinconfig')
+location = config.get('source_db', 'location', 'changelocationinconfig')
+tablename = config.get('source_db', 'tablename', 'changetablenameinconfig')
+
+engine = create_engine("mysql://{}:{}@{}/{}".
+                       format(username, password, location, tablename),
+                       echo=False)
+
 Base = declarative_base(engine)
 
 

@@ -1,6 +1,6 @@
 import datetime
 import logging as log
-from models import melange
+# from models import melange
 import os
 from sqlalchemy.orm import sessionmaker
 import sys
@@ -63,13 +63,12 @@ def logit(name):
     return root
 
 
-def loadSession():
+def loadSession(engine):
     """no doc."""
-    #metadata = Base.metadata
-    log.debug("Connecting to database via sqlalchemy.")
-    Session = sessionmaker(bind=melange.engine)
+    log.debug("Connecting to database {}...".format(engine))
+    Session = sessionmaker(bind=engine)
     session = Session()
-    log.debug("Connected to database.")
+    log.debug("Connected to database {}.".format(engine))
     return session
 
 
