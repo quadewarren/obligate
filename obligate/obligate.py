@@ -29,6 +29,8 @@ log = logit('obligate.obligator')
 
 class Obligator(object):
     def __init__(self, melange_sess=None, neutron_sess=None):
+        self.commit_tick = 0
+        self.max_records = 75000
         self.error_free = True
         self.interface_tenant = dict()
         self.interfaces = dict()
@@ -129,12 +131,16 @@ class Obligator(object):
                                                          traceback.format_exc())))  # noqa
         end_time = time.time()
         log.info(colored.green("end  : {}".format(label)))
-        log.info(colored.blue("delta: {} = ".format(label)) + colored.white("{:.2f} seconds".format(end_time - start_time)))  # noqa
+        log.info(colored.blue("delta: {} = ".format(label))
+                 + colored.white("{:.2f} seconds".format(end_time - start_time)))  # noqa
         return end_time - start_time
 
     def add_to_session(self, item, tablename, id):
+        self.commit_tick += 1
         self.migrate_id(tablename, id)
-        self.neutron_session.add(item)
+        if ((self.commit_tick + 1) % self.max_records == 0):
+            self.neutron_session.add(item)
+            self.commit_tick = 0
 
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks

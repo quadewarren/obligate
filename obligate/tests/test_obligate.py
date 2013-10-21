@@ -21,7 +21,7 @@ import glob
 import json
 from obligate.models import melange, neutron
 from obligate import obligate
-from obligate.utils import get_basepath, logit, loadSession
+from obligate.utils import logit, loadSession  # get_basepath
 from obligate.utils import make_offset_lengths, migrate_tables, pad, trim_br
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func  # noqa
@@ -70,7 +70,6 @@ class TestMigration(unittest2.TestCase):
             return None
 
     def test_migration(self):
-        self._validate_schema_not_altered()
         for table in progress.bar(migrate_tables, label=pad('testing')):
             file = self.get_newest_json_file(table)
             if not file:
@@ -90,20 +89,6 @@ class TestMigration(unittest2.TestCase):
 
     def _validate_migration(self, tablename):
         exec("self._validate_{}()".format(tablename))
-
-    def _validate_schema_not_altered(self):
-        # throw error if there's a change on the models since this was created
-        basepath = get_basepath()
-        expected = ""
-        actual = ""
-        with open('{}/.models'.format(basepath), 'r') as f1:
-            expected = f1.read()
-        with open('{}/.venv/src/quark/quark/db/models.py'.format(basepath),
-                  'r') as f2:
-            actual = f2.read()
-        self.assertNotEqual(expected, "")
-        self.assertNotEqual(actual, "")
-        self.assertTrue(expected == actual, "Schemas have changed.")
 
     def _validate_networks(self):
         # get_scalar(column, True) <- True == "disctinct" modifier

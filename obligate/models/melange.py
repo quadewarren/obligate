@@ -12,10 +12,10 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import ConfigParser as cfgp
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-import os
-import ConfigParser as cfgp
 
 basepath = os.path.dirname(os.path.realpath(__file__))
 basepath = os.path.abspath(os.path.join(basepath, os.pardir))
@@ -27,10 +27,10 @@ config.read(config_file_path)
 username = config.get('source_db', 'user', 'changeuserinconfig')
 password = config.get('source_db', 'password', 'changepasswordinconfig')
 location = config.get('source_db', 'location', 'changelocationinconfig')
-tablename = config.get('source_db', 'tablename', 'changetablenameinconfig')
+dbname = config.get('source_db', 'dbname', 'changetablenameinconfig')
 
 engine = create_engine("mysql://{}:{}@{}/{}".
-                       format(username, password, location, tablename),
+                       format(username, password, location, dbname),
                        echo=False)
 
 Base = declarative_base(engine)
