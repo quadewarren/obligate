@@ -21,7 +21,7 @@ import glob
 import json
 from obligate.models import melange, neutron
 from obligate import obligate
-from obligate.utils import get_basepath, logit, loadSession
+from obligate.utils import logit, loadSession  # get_basepath
 from obligate.utils import make_offset_lengths, migrate_tables, pad, trim_br
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func  # noqa

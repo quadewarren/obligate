@@ -12,10 +12,10 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from sqlalchemy import create_engine
 import ConfigParser as cfgp
-from sqlalchemy.ext.declarative import declarative_base
 import os
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
 
 basepath = os.path.dirname(os.path.realpath(__file__))
 basepath = os.path.abspath(os.path.join(basepath, os.pardir))
