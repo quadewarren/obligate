@@ -91,20 +91,6 @@ class TestMigration(unittest2.TestCase):
     def _validate_migration(self, tablename):
         exec("self._validate_{}()".format(tablename))
 
-    def _validate_schema_not_altered(self):
-        # throw error if there's a change on the models since this was created
-        basepath = get_basepath()
-        expected = ""
-        actual = ""
-        with open('{}/.models'.format(basepath), 'r') as f1:
-            expected = f1.read()
-        with open('{}/.venv/src/quark/quark/db/models.py'.format(basepath),
-                  'r') as f2:
-            actual = f2.read()
-        self.assertNotEqual(expected, "")
-        self.assertNotEqual(actual, "")
-        self.assertTrue(expected == actual, "Schemas have changed.")
-
     def _validate_networks(self):
         # get_scalar(column, True) <- True == "disctinct" modifier
         blocks_count = self.get_scalar(melange.IpBlocks.network_id,
