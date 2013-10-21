@@ -70,7 +70,6 @@ class TestMigration(unittest2.TestCase):
             return None
 
     def test_migration(self):
-        self._validate_schema_not_altered()
         for table in progress.bar(migrate_tables, label=pad('testing')):
             file = self.get_newest_json_file(table)
             if not file:
