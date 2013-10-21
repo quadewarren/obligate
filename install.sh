@@ -24,10 +24,20 @@ source .venv/bin/activate
 pip install --upgrade pip distribute
 pip_install
 
+# create the config file
 if [ ! -f .config ]; then
-    echo '[db]' > .config
+    echo '[source_db]' > .config
     echo 'user=root' >> .config
     echo 'password=CHANGEME' >> .config
+    echo 'location=localhost' >> .config
+    echo 'dbname=melange' >> .config
+    echo '' >> .config
+    echo '[destination_db]' > .config
+    echo 'user=root' >> .config
+    echo 'password=CHANGEME' >> .config
+    echo 'location=localhost' >> .config
+    echo 'dbname=neutron' >> .config
+    echo '' >> .config
 fi
 
 echo

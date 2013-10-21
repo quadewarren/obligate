@@ -27,9 +27,9 @@ config.read(config_file_path)
 username = config.get('destination_db', 'user', 'changeuserinconfig')
 password = config.get('destination_db', 'password', 'changepasswordinconfig')
 location = config.get('destination_db', 'location', 'changelocationinconfig')
-tablename = config.get('destination_db', 'tablename',
+dbname = config.get('destination_db', 'dbname',
                        'changetablenameinconfig')
 
 engine = create_engine("mysql://{}:{}@{}/{}".
-                       format(username, password, location, tablename),
+                       format(username, password, location, dbname),
                        echo=False)
