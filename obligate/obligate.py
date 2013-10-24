@@ -138,9 +138,10 @@ class Obligator(object):
     def add_to_session(self, item, tablename, id):
         self.commit_tick += 1
         self.migrate_id(tablename, id)
+        self.neutron_session.add(item)
         if ((self.commit_tick + 1) % self.max_records == 0):
-            self.neutron_session.add(item)
             self.commit_tick = 0
+            self.neutron.session.commit()
 
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
