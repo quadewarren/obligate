@@ -32,12 +32,14 @@ if [ ! -f .config ]; then
     echo 'location=localhost' >> .config
     echo 'dbname=melange' >> .config
     echo '' >> .config
-    echo '[destination_db]' > .config
+    echo '[destination_db]' >> .config
     echo 'user=root' >> .config
     echo 'password=CHANGEME' >> .config
     echo 'location=localhost' >> .config
     echo 'dbname=neutron' >> .config
     echo '' >> .config
+    echo '[migrate_version]' >> .config
+    echo 'version=6' >> .config
 fi
 
 echo

@@ -101,6 +101,11 @@ class MacAddresses(MelangeMixin, Base):
     __tablename__ = "mac_addresses"
 
 
+class MigrationVersion(MelangeMixin, Base):
+    """"""
+    __tablename__ = "migrate_version"
+
+
 class Policies(MelangeMixin, Base):
     """"""
     __tablename__ = "policies"
