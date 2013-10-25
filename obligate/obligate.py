@@ -379,6 +379,7 @@ class Obligator(object):
             policy_rules = [(off.offset, off.length) for off in offsets
                             if off.policy_id == policy]
             policy_rules = make_offset_lengths(policy_octets, policy_rules)
+            p_description = policy.description
             try:
                 policy_name = self.melange_session.query(
                     melange.Policies.name).\
@@ -394,7 +395,8 @@ class Obligator(object):
                 q_ip_policy = quarkmodels.IPPolicy(id=policy_uuid,
                                                    tenant_id=
                                                    q_network.tenant_id,
-                                                   name=policy_name)
+                                                   name=policy_name,
+                                                   description=p_description)
                 q_ip_policy.networks.append(q_network)
                 q_subnet = self.neutron_session.query(quarkmodels.Subnet).\
                     filter(quarkmodels.Subnet.id == block_id).first()
