@@ -289,7 +289,7 @@ class TestMigration(unittest2.TestCase):
                    _q_policy.id).all()
         for range in _q_policy_rules:
             _actual.append((range.offset, range.length))
-        self.assertEqual(_expected, _actual)
+        self.assertItemsEqual(_expected, _actual)
 
     def _compare_after_migration(self, melange_type, melange_count,
                                  quark_type, quark_count):
