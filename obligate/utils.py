@@ -1,9 +1,32 @@
+import ConfigParser as cfgp
 import datetime
 import logging as log
 # from models import melange
 import os
 from sqlalchemy.orm import sessionmaker
+import subprocess
 import sys
+
+
+basepath = os.path.dirname(os.path.realpath(__file__))
+basepath = os.path.abspath(os.path.join(basepath, os.pardir))
+
+config = cfgp.ConfigParser()
+config_file_path = "{}/.config".format(basepath)
+print config_file_path
+config.read(config_file_path)
+min_ram_mb = config.get('system_reqs', 'min_ram_mb', '4000')
+migrate_tables = config.get('migration', 'tables', ('networks',
+                                                    'subnets',
+                                                    'routes',
+                                                    'ips',
+                                                    'interfaces',
+                                                    'mac_ranges',
+                                                    'macs',
+                                                    'policies',
+                                                    'policy_rules'))
+migrate_tables = migrate_tables.splitlines()[1:]
+print migrate_tables
 
 
 def trim_br(network_id):
@@ -16,15 +39,13 @@ def pad(label):
     return " " * (20 - len(label)) + label + ': '
 
 
-migrate_tables = ('networks',
-                  'subnets',
-                  'routes',
-                  'ips',
-                  'interfaces',
-                  'mac_ranges',
-                  'macs',
-                  'policies',
-                  'policy_rules')
+def has_enough_ram():
+    free = subprocess.Popen(['free', '-m'],
+                            stdout=subprocess.PIPE).communicate()[0].splitlines()  # noqa
+    totes_ram = int(free[1].strip().split()[1])
+    if totes_ram >= int(min_ram_mb):
+        return True
+    return False
 
 
 def get_basepath():

@@ -37,7 +37,7 @@ config = cfgp.ConfigParser()
 config_file_path = "{}/../.config".format(basepath)
 config.read(config_file_path)
 
-migrate_version = config.get('migrate_version', 'version', '6')
+migrate_version = config.get('system_reqs', 'dbversion', '6')
 
 
 class TestMigration(unittest2.TestCase):
