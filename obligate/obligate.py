@@ -189,7 +189,7 @@ class Obligator(object):
                                           trim_br(block.network_id),
                                           tenant_id=block.tenant_id,
                                           cidr=block.cidr,
-                                          dont_use=omg_do_not_use)
+                                          do_not_use=omg_do_not_use)
             self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             self.migrate_ips(block=block)
             self.migrate_routes(block=block)
