@@ -205,6 +205,13 @@ class Obligator(object):
                  .format(len(self.policy_ids), blocks_without_policy))
 
     def migrate_routes(self, block=None):
+        """
+        In [64]: a = netaddr.IPAddress("255.240.0.0")
+        In [65]: netaddr.IPNetwork("192.168.0.0/%s" % (32 - int(math.log(2**32 - a.value, 2))))
+        Out[65]: IPNetwork('192.168.0.0/12')
+        So if the destination address is 192.168.0.0
+        Thats your cidr
+        """
         routes = self.melange_session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
