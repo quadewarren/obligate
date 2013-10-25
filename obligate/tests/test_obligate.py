@@ -17,15 +17,27 @@
 Test the obligate migration: melange -> quark
 """
 from clint.textui import progress
+import ConfigParser as cfgp
 import glob
 import json
 from obligate.models import melange, neutron
 from obligate import obligate
 from obligate.utils import logit, loadSession  # get_basepath
 from obligate.utils import make_offset_lengths, migrate_tables, pad, trim_br
+import os
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func  # noqa
 import unittest2
+
+
+basepath = os.path.dirname(os.path.realpath(__file__))
+basepath = os.path.abspath(os.path.join(basepath, os.pardir))
+
+config = cfgp.ConfigParser()
+config_file_path = "{}/../.config".format(basepath)
+config.read(config_file_path)
+
+migrate_version = config.get('migrate_version', 'version', '6')
 
 
 class TestMigration(unittest2.TestCase):
@@ -69,7 +81,13 @@ class TestMigration(unittest2.TestCase):
         else:
             return None
 
+    def check_version(self):
+        current_version = self.melange_session.query(
+            melange.MigrationVersion).first()
+        self.assertEqual(current_version.version, int(migrate_version))
+
     def test_migration(self):
+        self.check_version()
         for table in progress.bar(migrate_tables, label=pad('testing')):
             file = self.get_newest_json_file(table)
             if not file:
@@ -289,7 +307,7 @@ class TestMigration(unittest2.TestCase):
                    _q_policy.id).all()
         for range in _q_policy_rules:
             _actual.append((range.offset, range.length))
-        self.assertEqual(_expected, _actual)
+        self.assertItemsEqual(_expected, _actual)
 
     def _compare_after_migration(self, melange_type, melange_count,
                                  quark_type, quark_count):
