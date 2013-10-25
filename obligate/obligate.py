@@ -183,11 +183,13 @@ class Obligator(object):
         blocks_without_policy = 0
         for block in progress.bar(blocks, label=pad('subnets')):
             self.init_id('subnets', block.id)
+            omg_do_not_use = block.omg_do_not_use
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=
                                           trim_br(block.network_id),
                                           tenant_id=block.tenant_id,
-                                          cidr=block.cidr)
+                                          cidr=block.cidr,
+                                          dont_use=omg_do_not_use)
             self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             self.migrate_ips(block=block)
             self.migrate_routes(block=block)
