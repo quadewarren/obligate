@@ -13,7 +13,6 @@ basepath = os.path.abspath(os.path.join(basepath, os.pardir))
 
 config = cfgp.ConfigParser()
 config_file_path = "{}/.config".format(basepath)
-print config_file_path
 config.read(config_file_path)
 min_ram_mb = config.get('system_reqs', 'min_ram_mb', '4000')
 migrate_tables = config.get('migration', 'tables', ('networks',
@@ -26,7 +25,6 @@ migrate_tables = config.get('migration', 'tables', ('networks',
                                                     'policies',
                                                     'policy_rules'))
 migrate_tables = migrate_tables.splitlines()[1:]
-print migrate_tables
 
 
 def trim_br(network_id):
