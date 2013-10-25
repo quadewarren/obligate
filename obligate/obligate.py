@@ -242,6 +242,7 @@ class Obligator(object):
             self.init_id('ips', address.id)
             """Populate interface_network cache"""
             interface = address.interface_id
+            used_by = block.used_by_tenant_id
             if interface is not None and\
                     interface not in self.interface_network:
                 self.interface_network[interface] = \
@@ -265,7 +266,7 @@ class Obligator(object):
             ip_address = netaddr.IPAddress(address.address)
             q_ip = quarkmodels.IPAddress(id=address.id,
                                          created_at=address.created_at,
-                                         tenant_id=block.tenant_id,
+                                         used_by_tenant_id=used_by,
                                          network_id=
                                          trim_br(block.network_id),
                                          subnet_id=block.id,
