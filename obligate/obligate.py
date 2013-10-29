@@ -138,8 +138,7 @@ class Obligator(object):
         self.neutron_session.add(item)
         if ((self.commit_tick + 1) % self.max_records == 0):
             self.commit_tick = 0
-            self.neutron_session.commit()
-            log.debug("neutron_session.commit() complete.")
+            self.migrate_commit()
 
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
@@ -255,25 +254,25 @@ class Obligator(object):
                                   trim_br(block.network_id)))
             deallocated = False
             deallocated_at = None
-            # If marked for deallocation 
+            # If marked for deallocation
             #       put it into the quark ip table as deallocated
             if address.marked_for_deallocation == 1:
                 deallocated = True
                 deallocated_at = address.deallocated_at
 
             ip_address = netaddr.IPAddress(address.address)
-            q_ip = quarkmodels.IPAddress(
-                id = address.id,
-                created_at = address.created_at,
-                used_by_tenant_id = address.used_by_tenant_id,
-                network_id = trim_br(block.network_id),
-                subnet_id = block.id,
-                version = ip_address.version,
-                address_readable = address.address,
-                deallocated_at = deallocated_at,
-                _deallocated = deallocated,
-                address = int(ip_address.ipv6())
-                )
+            q_ip = quarkmodels.IPAddress(id=address.id,
+                                         created_at=address.created_at,
+                                         used_by_tenant_id=
+                                         address.used_by_tenant_id,
+                                         network_id=
+                                         trim_br(block.network_id),
+                                         subnet_id=block.id,
+                                         version=ip_address.version,
+                                         address_readable=address.address,
+                                         deallocated_at=deallocated_at,
+                                         _deallocated=deallocated,
+                                         address=int(ip_address.ipv6()))
             """Populate interface_ip cache"""
             if interface not in self.interface_ip:
                 self.interface_ip[interface] = set()
@@ -303,6 +302,8 @@ class Obligator(object):
                  .format(str(no_network_count)))
 
     def associate_ips_with_ports(self):
+        """This is a time-consuming little function and begs to be optimized
+        """
         for port in progress.bar(self.port_cache, label=pad('ports')):
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
@@ -370,6 +371,12 @@ class Obligator(object):
 
         We exclude the default policies.  These are octets that are 0 or
         ip ranges that have offset 0 and length 1.
+
+        This is another time-consuming function, but optimization will not
+        yeild as much fruit as optimizing associate_ips_with_ports()
+
+        There is a minute or two of lag while this spins up, may be a way
+        to negate this.
         """
         from uuid import uuid4
         octets = self.melange_session.query(melange.IpOctets).all()
@@ -416,6 +423,7 @@ class Obligator(object):
     def migrate_commit(self):
         """4. Commit the changes to the database"""
         self.neutron_session.commit()
+        log.debug("neutron_session.commit() complete.")
 
     def migrate(self):
         """
