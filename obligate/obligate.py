@@ -110,13 +110,10 @@ class Obligator(object):
                 json.dump(self.json_data[tablename], fh)
 
     def flush_db(self):
-        log.debug("drop/create imminent.")
-        quarkmodels.BASEV2.metadata.drop_all(melange.engine)
+        # quarkmodels.BASEV2.metadata.drop_all(melange.engine)
         quarkmodels.BASEV2.metadata.drop_all(neutron.engine)
-        log.debug("drop_all complete")
-        quarkmodels.BASEV2.metadata.create_all(melange.engine)
         quarkmodels.BASEV2.metadata.create_all(neutron.engine)
-        log.debug("create_all complete.")
+        log.debug("flush_db() complete.")
 
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
@@ -141,7 +138,8 @@ class Obligator(object):
         self.neutron_session.add(item)
         if ((self.commit_tick + 1) % self.max_records == 0):
             self.commit_tick = 0
-            self.neutron.session.commit()
+            self.neutron_session.commit()
+            log.debug("neutron_session.commit() complete.")
 
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
@@ -187,7 +185,8 @@ class Obligator(object):
                                           network_id=
                                           trim_br(block.network_id),
                                           tenant_id=block.tenant_id,
-                                          cidr=block.cidr)
+                                          cidr=block.cidr,
+                                          do_not_use=block.omg_do_not_use)
             self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             self.migrate_ips(block=block)
             self.migrate_routes(block=block)
@@ -205,6 +204,14 @@ class Obligator(object):
                  .format(len(self.policy_ids), blocks_without_policy))
 
     def migrate_routes(self, block=None):
+        """
+        In [64]: a = netaddr.IPAddress("255.240.0.0")
+        In [65]: netaddr.IPNetwork("192.168.0.0/%s" %
+            (32 - int(math.log(2**32 - a.value, 2))))
+        Out[65]: IPNetwork('192.168.0.0/12')
+        So if the destination address is 192.168.0.0
+        Thats your cidr
+        """
         routes = self.melange_session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
@@ -248,25 +255,25 @@ class Obligator(object):
                                   trim_br(block.network_id)))
             deallocated = False
             deallocated_at = None
-            """If marked for deallocation put it into the quark ip table
-            as deallocated
-            """
+            # If marked for deallocation 
+            #       put it into the quark ip table as deallocated
             if address.marked_for_deallocation == 1:
                 deallocated = True
                 deallocated_at = address.deallocated_at
 
             ip_address = netaddr.IPAddress(address.address)
-            q_ip = quarkmodels.IPAddress(id=address.id,
-                                         created_at=address.created_at,
-                                         tenant_id=block.tenant_id,
-                                         network_id=
-                                         trim_br(block.network_id),
-                                         subnet_id=block.id,
-                                         version=ip_address.version,
-                                         address_readable=address.address,
-                                         deallocated_at=deallocated_at,
-                                         _deallocated=deallocated,
-                                         address=int(ip_address.ipv6()))
+            q_ip = quarkmodels.IPAddress(
+                id = address.id,
+                created_at = address.created_at,
+                used_by_tenant_id = address.used_by_tenant_id,
+                network_id = trim_br(block.network_id),
+                subnet_id = block.id,
+                version = ip_address.version,
+                address_readable = address.address,
+                deallocated_at = deallocated_at,
+                _deallocated = deallocated,
+                address = int(ip_address.ipv6())
+                )
             """Populate interface_ip cache"""
             if interface not in self.interface_ip:
                 self.interface_ip[interface] = set()
@@ -324,7 +331,8 @@ class Obligator(object):
                                               cidr=cidr,
                                               created_at=mac_range.created_at,
                                               first_address=first_address,
-                                              next_auto_assign_mac=first_address,  # noqa
+                                              next_auto_assign_mac=
+                                              first_address,
                                               last_address=last_address)
         self.add_to_session(q_range, 'mac_ranges', q_range.id)
         res = self.melange_session.query(melange.MacAddresses).all()
@@ -373,11 +381,11 @@ class Obligator(object):
                             if off.policy_id == policy]
             policy_rules = make_offset_lengths(policy_octets, policy_rules)
             try:
-                policy_name = self.melange_session.query(
-                    melange.Policies.name).\
+                policy_description = self.melange_session.query(
+                    melange.Policies.description).\
                     filter(melange.Policies.id == policy).first()[0]
             except Exception:
-                policy_name = None
+                policy_description = None
             for block_id in policy_block_ids.keys():
                 policy_uuid = str(uuid4())
                 self.init_id('policies', policy_uuid)
@@ -387,7 +395,8 @@ class Obligator(object):
                 q_ip_policy = quarkmodels.IPPolicy(id=policy_uuid,
                                                    tenant_id=
                                                    q_network.tenant_id,
-                                                   name=policy_name)
+                                                   description=
+                                                   policy_description)
                 q_ip_policy.networks.append(q_network)
                 q_subnet = self.neutron_session.query(quarkmodels.Subnet).\
                     filter(quarkmodels.Subnet.id == block_id).first()
