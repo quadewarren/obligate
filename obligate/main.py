@@ -11,8 +11,6 @@ def main():
     migration = Obligator(melange_session, neutron_session)
     migration.flush_db()
     migration.migrate()
-    log.info("Dumping json to file {0}...".format(migration.json_filename))
-    migration.dump_json()
 
 if __name__ == "__main__":
     main()
