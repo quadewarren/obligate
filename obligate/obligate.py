@@ -14,15 +14,19 @@
 # limitations under the License.
 from clint.textui import colored
 from clint.textui import progress
-import datetime
-import json
 from models import melange, neutron
 import netaddr
 from quark.db import models as quarkmodels
 import resource
 import time
 import traceback
-from utils import logit, to_mac_range, make_offset_lengths, migrate_tables, pad
+from utils import build_json_structure
+from utils import dump_json
+from utils import logit
+from utils import make_offset_lengths
+from utils import migrate_id
+from utils import pad
+from utils import to_mac_range
 from utils import trim_br
 
 log = logit('obligate.obligator')
@@ -32,7 +36,6 @@ class Obligator(object):
     def __init__(self, melange_sess=None, neutron_sess=None):
         self.commit_tick = 0
         self.max_records = 75000
-        self.error_free = True
         self.interface_tenant = dict()
         self.interfaces = dict()
         self.interface_network = dict()
@@ -41,27 +44,9 @@ class Obligator(object):
         self.policy_ids = dict()
         self.melange_session = melange_sess
         self.neutron_session = neutron_sess
-        file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
-        now = datetime.datetime.now()
-        self.json_filename = 'logs/obligate.{}'\
-            .format(now.strftime(file_timeformat))
-        self.json_data = dict()
-        self.migrate_tables = migrate_tables
-        self.build_json_structure()
-        if not self.melange_session:
-            log.warning("No melange session created when initializing"
-                        " Obligator.")
+        self.json_data = build_json_structure()
         res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        log.debug("Ram used: {:0.2f}M".format(res / 1000.0))
-
-    def build_json_structure(self):
-        """
-        Create the self.json_data structure and populate defaults
-        """
-        for table in self.migrate_tables:
-            self.json_data[table] = {'num migrated': 0,
-                                     'ids': dict()}
-        log.debug("JSON built.")
+        log.debug("Ram used: {:0.2f}M".format(res / 1024.0))
 
     def init_id(self, tablename, id, num_exp=1):
         """
@@ -80,21 +65,6 @@ class Obligator(object):
             log.error("Inserting {} on {} failed.".format(id, tablename),
                       exc_info=True)
 
-    def migrate_id(self, tablename, id):
-        try:
-            self.json_data[tablename]['ids'][id]['migrated'] = True
-            self.json_data[tablename]['ids'][id]['migration count'] -= 1
-            self.incr_num(tablename)
-        except Exception:
-            log.error("Key {} not in {}".format(id, tablename))
-
-    def incr_num(self, tablename):
-        """
-        Increase the json_data[tablename]['num migrated']
-        This is syntactic sugar.
-        """
-        self.json_data[tablename]['num migrated'] += 1
-
     def set_reason(self, tablename, id, reason):
         try:
             self.json_data[tablename]['ids'][id]['reason'] = reason
@@ -102,20 +72,7 @@ class Obligator(object):
             log.error("Key {} not in {}"
                       " (tried reason {})".format(id, tablename, reason))
 
-    def dump_json(self):
-        """
-        This should only be called once after self.json_data has been populated
-        otherwise the same data will be written multiple times.
-        """
-        for tablename in progress.bar(self.migrate_tables,
-                                      label=pad('dump json')):
-            with open('{}.{}.json'.format(self.json_filename, tablename),
-                      'wb') as fh:
-                json.dump(self.json_data[tablename], fh)
-        log.debug("JSON dumped.")
-
     def flush_db(self):
-        # quarkmodels.BASEV2.metadata.drop_all(melange.engine)
         quarkmodels.BASEV2.metadata.drop_all(neutron.engine)
         quarkmodels.BASEV2.metadata.create_all(neutron.engine)
         log.debug("flush_db() complete.")
@@ -141,7 +98,7 @@ class Obligator(object):
 
     def add_to_session(self, item, tablename, id):
         self.commit_tick += 1
-        self.migrate_id(tablename, id)
+        self.json_data = migrate_id(self.json_data, tablename, id)
         self.neutron_session.add(item)
         if ((self.commit_tick + 1) % self.max_records == 0):
             self.commit_tick = 0
@@ -313,7 +270,6 @@ class Obligator(object):
         """This is a time-consuming little function and begs to be optimized
         111,600+ iterations @ 1,000 seconds in DFW
         """
-        x = 0
         for port in progress.bar(self.port_cache, label=pad('ports')):
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
@@ -459,3 +415,4 @@ class Obligator(object):
                                   self.migrate_commit)
         log.info("TOTAL: {0:.2f} seconds.".format(totes))
         log.debug(colored.yellow("Done."))
+        dump_json(self.json_data)
