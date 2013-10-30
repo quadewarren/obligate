@@ -19,6 +19,7 @@ import json
 from models import melange, neutron
 import netaddr
 from quark.db import models as quarkmodels
+import resource
 import time
 import traceback
 from utils import logit, to_mac_range, make_offset_lengths, migrate_tables, pad
@@ -50,6 +51,8 @@ class Obligator(object):
         if not self.melange_session:
             log.warning("No melange session created when initializing"
                         " Obligator.")
+        res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        log.debug("Ram used: {:0.2f}M".format(res / 1000.0))
 
     def build_json_structure(self):
         """
@@ -58,6 +61,7 @@ class Obligator(object):
         for table in self.migrate_tables:
             self.json_data[table] = {'num migrated': 0,
                                      'ids': dict()}
+        log.debug("JSON built.")
 
     def init_id(self, tablename, id, num_exp=1):
         """
@@ -108,6 +112,7 @@ class Obligator(object):
             with open('{}.{}.json'.format(self.json_filename, tablename),
                       'wb') as fh:
                 json.dump(self.json_data[tablename], fh)
+        log.debug("JSON dumped.")
 
     def flush_db(self):
         # quarkmodels.BASEV2.metadata.drop_all(melange.engine)
@@ -130,6 +135,8 @@ class Obligator(object):
         log.info(colored.green("end  : {}".format(label)))
         log.info(colored.blue("delta: {} = ".format(label))
                  + colored.white("{:.2f} seconds".format(end_time - start_time)))  # noqa
+        res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        log.debug("Ram used: {:0.2f}M".format(res / 1000.0))
         return end_time - start_time
 
     def add_to_session(self, item, tablename, id):
@@ -138,8 +145,7 @@ class Obligator(object):
         self.neutron_session.add(item)
         if ((self.commit_tick + 1) % self.max_records == 0):
             self.commit_tick = 0
-            self.neutron_session.commit()
-            log.debug("neutron_session.commit() complete.")
+            self.migrate_commit()
 
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
@@ -255,25 +261,25 @@ class Obligator(object):
                                   trim_br(block.network_id)))
             deallocated = False
             deallocated_at = None
-            # If marked for deallocation 
+            # If marked for deallocation
             #       put it into the quark ip table as deallocated
             if address.marked_for_deallocation == 1:
                 deallocated = True
                 deallocated_at = address.deallocated_at
 
             ip_address = netaddr.IPAddress(address.address)
-            q_ip = quarkmodels.IPAddress(
-                id = address.id,
-                created_at = address.created_at,
-                used_by_tenant_id = address.used_by_tenant_id,
-                network_id = trim_br(block.network_id),
-                subnet_id = block.id,
-                version = ip_address.version,
-                address_readable = address.address,
-                deallocated_at = deallocated_at,
-                _deallocated = deallocated,
-                address = int(ip_address.ipv6())
-                )
+            q_ip = quarkmodels.IPAddress(id=address.id,
+                                         created_at=address.created_at,
+                                         used_by_tenant_id=
+                                         address.used_by_tenant_id,
+                                         network_id=
+                                         trim_br(block.network_id),
+                                         subnet_id=block.id,
+                                         version=ip_address.version,
+                                         address_readable=address.address,
+                                         deallocated_at=deallocated_at,
+                                         _deallocated=deallocated,
+                                         address=int(ip_address.ipv6()))
             """Populate interface_ip cache"""
             if interface not in self.interface_ip:
                 self.interface_ip[interface] = set()
@@ -283,6 +289,7 @@ class Obligator(object):
     def migrate_interfaces(self):
         interfaces = self.melange_session.query(melange.Interfaces).all()
         no_network_count = 0
+        log.critical("NVP_TEMP_KEY needs to be updated.")
         for interface in progress.bar(interfaces, label=pad('interfaces')):
             self.init_id("interfaces", interface.id)
             if interface.id not in self.interface_network:
@@ -303,10 +310,15 @@ class Obligator(object):
                  .format(str(no_network_count)))
 
     def associate_ips_with_ports(self):
+        """This is a time-consuming little function and begs to be optimized
+        111,600+ iterations @ 1,000 seconds in DFW
+        """
+        x = 0
         for port in progress.bar(self.port_cache, label=pad('ports')):
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
-                q_port.ip_addresses.append(ip)
+                # q_port.ip_addresses.append(ip)
+                pass
 
     def migrate_macs(self):
         """2. Migrate the m.mac_address -> q.quark_mac_addresses
@@ -323,9 +335,11 @@ class Obligator(object):
             cidr, first_address, last_address = to_mac_range(cidr)
         except ValueError as e:
             self.set_reason(mac_range.id, "mac_ranges", e.message)
+            log.critical(e.message)
             return None
         except netaddr.AddrFormatError as afe:
             self.set_reason(mac_range.id, "mac_ranges", afe.message)
+            log.critical(afe.message)
             return None
         q_range = quarkmodels.MacAddressRange(id=mac_range.id,
                                               cidr=cidr,
@@ -370,6 +384,12 @@ class Obligator(object):
 
         We exclude the default policies.  These are octets that are 0 or
         ip ranges that have offset 0 and length 1.
+
+        This is another time-consuming function, but optimization will not
+        yeild as much fruit as optimizing associate_ips_with_ports()
+
+        There is a minute or two of lag while this spins up, may be a way
+        to negate this.
         """
         from uuid import uuid4
         octets = self.melange_session.query(melange.IpOctets).all()
@@ -416,6 +436,7 @@ class Obligator(object):
     def migrate_commit(self):
         """4. Commit the changes to the database"""
         self.neutron_session.commit()
+        log.debug("neutron_session.commit() complete.")
 
     def migrate(self):
         """
