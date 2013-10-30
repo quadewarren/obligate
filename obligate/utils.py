@@ -1,49 +1,11 @@
 import ConfigParser as cfgp
 import datetime
+import json
 import logging as log
-# from models import melange
 import os
 from sqlalchemy.orm import sessionmaker
 import subprocess
 import sys
-
-
-basepath = os.path.dirname(os.path.realpath(__file__))
-basepath = os.path.abspath(os.path.join(basepath, os.pardir))
-
-config = cfgp.ConfigParser()
-config_file_path = "{}/.config".format(basepath)
-config.read(config_file_path)
-min_ram_mb = config.get('system_reqs', 'min_ram_mb', '4000')
-migrate_tables = config.get('migration', 'tables', ('networks',
-                                                    'subnets',
-                                                    'routes',
-                                                    'ips',
-                                                    'interfaces',
-                                                    'mac_ranges',
-                                                    'macs',
-                                                    'policies',
-                                                    'policy_rules'))
-migrate_tables = migrate_tables.splitlines()[1:]
-
-
-def trim_br(network_id):
-    if network_id[:3] == "br-":
-        return network_id[3:]
-    return network_id
-
-
-def pad(label):
-    return " " * (20 - len(label)) + label + ': '
-
-
-def has_enough_ram():
-    free = subprocess.Popen(['free', '-m'],
-                            stdout=subprocess.PIPE).communicate()[0].splitlines()  # noqa
-    totes_ram = int(free[1].strip().split()[1])
-    if totes_ram >= int(min_ram_mb):
-        return True
-    return False
 
 
 def get_basepath():
@@ -80,6 +42,78 @@ def logit(name):
     ch.setFormatter(formatter)
     root.addHandler(ch)
     return root
+
+
+ulog = logit('obligate.utils')
+
+basepath = os.path.dirname(os.path.realpath(__file__))
+basepath = os.path.abspath(os.path.join(basepath, os.pardir))
+
+config = cfgp.ConfigParser()
+config_file_path = "{}/.config".format(basepath)
+config.read(config_file_path)
+min_ram_mb = config.get('system_reqs', 'min_ram_mb', '4000')
+migrate_tables = config.get('migration', 'tables', ('networks',
+                                                    'subnets',
+                                                    'routes',
+                                                    'ips',
+                                                    'interfaces',
+                                                    'mac_ranges',
+                                                    'macs',
+                                                    'policies',
+                                                    'policy_rules'))
+migrate_tables = migrate_tables.splitlines()[1:]
+
+
+def build_json_structure(tables=migrate_tables):
+    json_data = dict()
+    for table in tables:
+        json_data[table] = {'num migrated': 0,
+                            'ids': dict()}
+    return json_data
+
+
+def dump_json(data):
+    file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
+    now = datetime.datetime.now()
+    filename = 'logs/obligate.{}'.format(now.strftime(file_timeformat))
+    for tablename in migrate_tables:
+        with open('{}.{}.json'.format(filename, tablename), 'wb') as fh:
+            json.dump(data[tablename], fh)
+
+
+def incr_num(json_data, tablename):
+    json_data[tablename]['num migrated'] += 1
+    return json_data
+
+
+def migrate_id(json_data, tablename, id):
+    try:
+        json_data[tablename]['ids'][id]['migrated'] = True
+        json_data[tablename]['ids'][id]['migration count'] -= 1
+        json_data = incr_num(json_data, tablename)
+    except Exception:
+        ulog.error("Key {} not in {}".format(id, tablename))
+    return json_data
+
+
+def trim_br(network_id):
+    if network_id[:3] == "br-":
+        return network_id[3:]
+    return network_id
+
+
+def pad(label):
+    return " " * (20 - len(label)) + label + ': '
+
+
+def has_enough_ram():
+    free = subprocess.Popen(['free', '-m'],
+                            stdout=subprocess.PIPE).communicate()[0].splitlines()  # noqa
+    totes_ram = int(free[1].strip().split()[1])
+    if totes_ram >= int(min_ram_mb):
+        return True
+    return False
 
 
 def loadSession(engine):

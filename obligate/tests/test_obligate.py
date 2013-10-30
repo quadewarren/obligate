@@ -98,7 +98,6 @@ class TestMigration(unittest2.TestCase):
                                                self.neutron_session)
                 migration.flush_db()
                 migration.migrate()
-                migration.dump_json()
                 file = self.get_newest_json_file(table)
             self.log.info("newest json file is {}".format(file))
             data = open(file)
