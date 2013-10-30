@@ -19,6 +19,7 @@ import json
 from models import melange, neutron
 import netaddr
 from quark.db import models as quarkmodels
+import resource
 import time
 import traceback
 from utils import logit, to_mac_range, make_offset_lengths, migrate_tables, pad
@@ -50,6 +51,8 @@ class Obligator(object):
         if not self.melange_session:
             log.warning("No melange session created when initializing"
                         " Obligator.")
+        res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        log.debug("Ram used: {:0.2f}M".format(res / 1000.0))
 
     def build_json_structure(self):
         """
@@ -58,6 +61,7 @@ class Obligator(object):
         for table in self.migrate_tables:
             self.json_data[table] = {'num migrated': 0,
                                      'ids': dict()}
+        log.debug("JSON built.")
 
     def init_id(self, tablename, id, num_exp=1):
         """
@@ -108,6 +112,7 @@ class Obligator(object):
             with open('{}.{}.json'.format(self.json_filename, tablename),
                       'wb') as fh:
                 json.dump(self.json_data[tablename], fh)
+        log.debug("JSON dumped.")
 
     def flush_db(self):
         # quarkmodels.BASEV2.metadata.drop_all(melange.engine)
@@ -130,6 +135,8 @@ class Obligator(object):
         log.info(colored.green("end  : {}".format(label)))
         log.info(colored.blue("delta: {} = ".format(label))
                  + colored.white("{:.2f} seconds".format(end_time - start_time)))  # noqa
+        res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        log.debug("Ram used: {:0.2f}M".format(res / 1000.0))
         return end_time - start_time
 
     def add_to_session(self, item, tablename, id):
@@ -282,6 +289,7 @@ class Obligator(object):
     def migrate_interfaces(self):
         interfaces = self.melange_session.query(melange.Interfaces).all()
         no_network_count = 0
+        log.critical("NVP_TEMP_KEY needs to be updated.")
         for interface in progress.bar(interfaces, label=pad('interfaces')):
             self.init_id("interfaces", interface.id)
             if interface.id not in self.interface_network:
@@ -303,11 +311,14 @@ class Obligator(object):
 
     def associate_ips_with_ports(self):
         """This is a time-consuming little function and begs to be optimized
+        111,600+ iterations @ 1,000 seconds in DFW
         """
+        x = 0
         for port in progress.bar(self.port_cache, label=pad('ports')):
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
-                q_port.ip_addresses.append(ip)
+                # q_port.ip_addresses.append(ip)
+                pass
 
     def migrate_macs(self):
         """2. Migrate the m.mac_address -> q.quark_mac_addresses
@@ -324,9 +335,11 @@ class Obligator(object):
             cidr, first_address, last_address = to_mac_range(cidr)
         except ValueError as e:
             self.set_reason(mac_range.id, "mac_ranges", e.message)
+            log.critical(e.message)
             return None
         except netaddr.AddrFormatError as afe:
             self.set_reason(mac_range.id, "mac_ranges", afe.message)
+            log.critical(afe.message)
             return None
         q_range = quarkmodels.MacAddressRange(id=mac_range.id,
                                               cidr=cidr,
