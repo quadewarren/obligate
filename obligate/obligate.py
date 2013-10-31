@@ -12,6 +12,7 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 from models import melange, neutron
 import netaddr
 from quark.db import models as quarkmodels
@@ -20,7 +21,6 @@ import time
 import traceback
 from utils import build_json_structure
 from utils import dump_json
-from utils import logit
 from utils import make_offset_lengths
 from utils import migrate_id
 from utils import pad
@@ -43,7 +43,7 @@ class Obligator(object):
         self.neutron_session = neutron_sess
         self.json_data = build_json_structure()
         res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        self.log = logit('obligate.obligator', verbose)
+        self.log = logging.getLogger('obligate.obligator')
         self.log.debug("Ram used: {:0.2f}M".format(res / 1024.0))
 
     def init_id(self, tablename, id, num_exp=1):
@@ -411,6 +411,4 @@ class Obligator(object):
         totes += self.do_and_time("commit changes",
                                   self.migrate_commit)
         self.log.info("TOTAL: {0:.2f} seconds.".format(totes))
-        self.log.debug("Done.")
-        self.log.debug("-" * 40)
         dump_json(self.json_data)
