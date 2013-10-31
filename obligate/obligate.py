@@ -30,7 +30,7 @@ from utils import trim_br
 
 
 class Obligator(object):
-    def __init__(self, melange_sess=None, neutron_sess=None, verbose=False):
+    def __init__(self, melange_sess=None, neutron_sess=None):
         self.commit_tick = 0
         self.max_records = 75000
         self.interface_tenant = dict()
