@@ -14,13 +14,12 @@ def get_basepath():
     return basepath
 
 
-def logit(name):
-    """no doc."""
-    log_format = "{} {}\t{}:{}\t{}".format('%(asctime)s',
-                                           '%(levelname)s',
-                                           '%(funcName)s',
-                                           '%(lineno)d',
-                                           '%(message)s')
+def logit(name, verbose=False):
+    log_format = "{} {} {} line {} {}".format('%(asctime)-25s',
+                                              '%(levelname)-8s',
+                                              '%(funcName)-20s',
+                                              '%(lineno)-7s',
+                                              '%(message)-4s')
     log_dateformat = '%m/%d/%Y %I:%M:%S %p'
     file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
     now = datetime.datetime.now()
@@ -40,7 +39,8 @@ def logit(name):
     ch.setLevel(log.DEBUG)
     formatter = log.Formatter(log_format)
     ch.setFormatter(formatter)
-    root.addHandler(ch)
+    if verbose:
+        root.addHandler(ch)
     return root
 
 
