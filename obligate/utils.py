@@ -2,7 +2,7 @@ import atexit
 import ConfigParser as cfgp
 import datetime
 import json
-import logging  # as log
+import logging
 import os
 from sqlalchemy.orm import sessionmaker
 import subprocess
