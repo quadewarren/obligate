@@ -20,9 +20,10 @@ from clint.textui import progress
 import ConfigParser as cfgp
 import glob
 import json
+import logging
 from obligate.models import melange, neutron
 from obligate import obligate
-from obligate.utils import logit, loadSession
+from obligate.utils import loadSession
 from obligate.utils import make_offset_lengths, migrate_tables, pad, trim_br
 import os
 from quark.db import models as quarkmodels
@@ -45,7 +46,7 @@ class TestMigration(unittest2.TestCase):
         self.melange_session = loadSession(melange.engine)
         self.neutron_session = loadSession(neutron.engine)
         self.json_data = dict()
-        self.log = logit('obligate.tests')
+        self.log = logging.getLogger('obligate.tests')
 
     def get_scalar(self, pk_name, session, filter=None, is_distinct=False):
         if is_distinct:

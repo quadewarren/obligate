@@ -1,7 +1,8 @@
+import atexit
 import ConfigParser as cfgp
 import datetime
 import json
-import logging as log
+import logging
 import os
 from sqlalchemy.orm import sessionmaker
 import subprocess
@@ -14,38 +15,38 @@ def get_basepath():
     return basepath
 
 
-def logit(name):
-    """no doc."""
-    log_format = "{} {}\t{}:{}\t{}".format('%(asctime)s',
-                                           '%(levelname)s',
-                                           '%(funcName)s',
-                                           '%(lineno)d',
-                                           '%(message)s')
-    log_dateformat = '%m/%d/%Y %I:%M:%S %p'
-    file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
-    now = datetime.datetime.now()
-    basepath = get_basepath()
-    filename_format = '{}/logs/obligate.{}.log'\
-        .format(basepath, now.strftime(file_timeformat))
-    # create the logs directory if it doesn't exist
-    if not os.path.exists('{}/logs'.format(basepath)):
-        os.makedirs('{}/logs'.format(basepath))
-    log.basicConfig(format=log_format,
-                    datefmt=log_dateformat,
-                    filename=filename_format,
-                    filemode='w',
-                    level=log.DEBUG)
-    root = log.getLogger(name)
-    ch = log.StreamHandler(sys.stdout)
-    ch.setLevel(log.DEBUG)
-    formatter = log.Formatter(log_format)
-    ch.setFormatter(formatter)
-    root.addHandler(ch)
-    return root
+log_format = "{} {} {} line {} {}".format('%(asctime)-25s',
+                                          '%(levelname)-8s',
+                                          '%(funcName)-20s',
+                                          '%(lineno)-7s',
+                                          '%(message)-4s')
+log_dateformat = '%m/%d/%Y %I:%M:%S %p'
+file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
+now = datetime.datetime.now()
+basepath = get_basepath()
+filename_format = '{}/logs/obligate.{}.log'\
+    .format(basepath, now.strftime(file_timeformat))
+
+# create the logs directory if it doesn't exist
+if not os.path.exists('{}/logs'.format(basepath)):
+    os.makedirs('{}/logs'.format(basepath))
 
 
-ulog = logit('obligate.utils')
+def start_logging(verbose=False):
+    logging.basicConfig(format=log_format,
+                        datefmt=log_dateformat,
+                        filename=filename_format,
+                        filemode='w',
+                        level=logging.DEBUG)
+    root = logging.getLogger()
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+    console.setFormatter(formatter)
+    if verbose:
+        root.addHandler(console)
 
+ulog = logging.getLogger('obligate.utils')
 basepath = os.path.dirname(os.path.realpath(__file__))
 basepath = os.path.abspath(os.path.join(basepath, os.pardir))
 
@@ -118,10 +119,10 @@ def has_enough_ram():
 
 def loadSession(engine):
     """no doc."""
-    log.debug("Connecting to database {}...".format(engine))
+    ulog.debug("Connecting to database {}...".format(engine))
     Session = sessionmaker(bind=engine)
     session = Session()
-    log.debug("Connected to database {}.".format(engine))
+    ulog.debug("Connected to database {}.".format(engine))
     return session
 
 
@@ -328,6 +329,12 @@ def to_mac_range(val):
     del netaddr
     return cidr, prefix_int, prefix_int + mask_size
 
+
+def done():
+    ulog.info('Done, exiting.')
+    ulog.info('-' * 20)
+
+atexit.register(done)
 
 if __name__ == "__main__":
     import doctest
