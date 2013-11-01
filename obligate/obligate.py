@@ -12,26 +12,28 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from clint.textui import colored
-from clint.textui import progress
-import datetime
-import json
+import gc
+import logging
 from models import melange, neutron
 import netaddr
 from quark.db import models as quarkmodels
+import resource
 import time
 import traceback
-from utils import logit, to_mac_range, make_offset_lengths, migrate_tables, pad
-from utils import trim_br
 
-log = logit('obligate.obligator')
+from utils import build_json_structure
+from utils import dump_json
+from utils import make_offset_lengths
+from utils import migrate_id
+from utils import pad
+from utils import to_mac_range
+from utils import trim_br
 
 
 class Obligator(object):
     def __init__(self, melange_sess=None, neutron_sess=None):
         self.commit_tick = 0
         self.max_records = 75000
-        self.error_free = True
         self.interface_tenant = dict()
         self.interfaces = dict()
         self.interface_network = dict()
@@ -40,24 +42,10 @@ class Obligator(object):
         self.policy_ids = dict()
         self.melange_session = melange_sess
         self.neutron_session = neutron_sess
-        file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
-        now = datetime.datetime.now()
-        self.json_filename = 'logs/obligate.{}'\
-            .format(now.strftime(file_timeformat))
-        self.json_data = dict()
-        self.migrate_tables = migrate_tables
-        self.build_json_structure()
-        if not self.melange_session:
-            log.warning("No melange session created when initializing"
-                        " Obligator.")
-
-    def build_json_structure(self):
-        """
-        Create the self.json_data structure and populate defaults
-        """
-        for table in self.migrate_tables:
-            self.json_data[table] = {'num migrated': 0,
-                                     'ids': dict()}
+        self.json_data = build_json_structure()
+        res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        self.log = logging.getLogger('obligate.obligator')
+        self.log.debug("Ram used: {:0.2f}M".format(res / 1024.0))
 
     def init_id(self, tablename, id, num_exp=1):
         """
@@ -73,75 +61,47 @@ class Obligator(object):
                                                     'migration count': num_exp,
                                                     'reason': None}
         except Exception:
-            log.error("Inserting {} on {} failed.".format(id, tablename),
-                      exc_info=True)
-
-    def migrate_id(self, tablename, id):
-        try:
-            self.json_data[tablename]['ids'][id]['migrated'] = True
-            self.json_data[tablename]['ids'][id]['migration count'] -= 1
-            self.incr_num(tablename)
-        except Exception:
-            log.error("Key {} not in {}".format(id, tablename))
-
-    def incr_num(self, tablename):
-        """
-        Increase the json_data[tablename]['num migrated']
-        This is syntactic sugar.
-        """
-        self.json_data[tablename]['num migrated'] += 1
+            self.log.error("Inserting {} on {} failed.".format(id, tablename),
+                           exc_info=True)
 
     def set_reason(self, tablename, id, reason):
         try:
             self.json_data[tablename]['ids'][id]['reason'] = reason
         except Exception:
-            log.error("Key {} not in {}"
-                      " (tried reason {})".format(id, tablename, reason))
-
-    def dump_json(self):
-        """
-        This should only be called once after self.json_data has been populated
-        otherwise the same data will be written multiple times.
-        """
-        for tablename in progress.bar(self.migrate_tables,
-                                      label=pad('dump json')):
-            with open('{}.{}.json'.format(self.json_filename, tablename),
-                      'wb') as fh:
-                json.dump(self.json_data[tablename], fh)
+            self.log.error("Key {} not in {}"
+                           " (tried reason {})".format(id, tablename, reason))
 
     def flush_db(self):
-        log.debug("drop/create imminent.")
-        quarkmodels.BASEV2.metadata.drop_all(melange.engine)
         quarkmodels.BASEV2.metadata.drop_all(neutron.engine)
-        log.debug("drop_all complete")
-        quarkmodels.BASEV2.metadata.create_all(melange.engine)
         quarkmodels.BASEV2.metadata.create_all(neutron.engine)
-        log.debug("create_all complete.")
+        self.log.debug("flush_db() complete.")
 
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
-        log.info(colored.green("start: {}".format(label)))
+        self.log.info("start: {}".format(label))
         try:
             fx(**kwargs)
         except Exception as e:
             self.error_free = False
-            log.critical(colored.red("Error during"
-                                     " {}:{}\n{}".format(label,
-                                                         e.message,
-                                                         traceback.format_exc())))  # noqa
+            self.log.critical("Error during"
+                              " {}:{}\n{}".format(label,
+                                                  e.message,
+                                                  traceback.format_exc()))
         end_time = time.time()
-        log.info(colored.green("end  : {}".format(label)))
-        log.info(colored.blue("delta: {} = ".format(label))
-                 + colored.white("{:.2f} seconds".format(end_time - start_time)))  # noqa
+        self.log.info("end  : {}".format(label))
+        self.log.info("delta: {} = {:.2f} seconds".format(label,
+                                                          end_time - start_time))  # noqa
+        res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        self.log.debug("Ram used: {:0.2f}M".format(res / 1000.0))
         return end_time - start_time
 
     def add_to_session(self, item, tablename, id):
         self.commit_tick += 1
-        self.migrate_id(tablename, id)
+        self.json_data = migrate_id(self.json_data, tablename, id)
         self.neutron_session.add(item)
         if ((self.commit_tick + 1) % self.max_records == 0):
             self.commit_tick = 0
-            self.neutron.session.commit()
+            self.migrate_commit()
 
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
@@ -158,7 +118,7 @@ class Obligator(object):
         networks = dict()
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
-        for block in progress.bar(blocks, label=pad('networks cache')):
+        for block in blocks:
             self.init_id('networks', trim_br(block.network_id))
             if trim_br(block.network_id) not in networks:
                 networks[trim_br(block.network_id)] = {
@@ -171,23 +131,24 @@ class Obligator(object):
                     .format(networks[trim_br(
                         block.network_id)]["tenant_id"],
                         block.tenant_id)
-                log.critical(r)
+                self.log.critical(r)
                 self.set_reason('networks', trim_br(block.network_id), r)
                 raise Exception
-        for net in progress.bar(networks, label=pad('networks')):
+        for net in networks:
             q_network = quarkmodels.Network(id=net,
                                             tenant_id=
                                             networks[net]["tenant_id"],
                                             name=networks[net]["name"])
             self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
-        for block in progress.bar(blocks, label=pad('subnets')):
+        for block in blocks:
             self.init_id('subnets', block.id)
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=
                                           trim_br(block.network_id),
                                           tenant_id=block.tenant_id,
-                                          cidr=block.cidr)
+                                          cidr=block.cidr,
+                                          do_not_use=block.omg_do_not_use)
             self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             self.migrate_ips(block=block)
             self.migrate_routes(block=block)
@@ -198,13 +159,31 @@ class Obligator(object):
                 self.policy_ids[block.policy_id][block.id] =\
                     trim_br(block.network_id)
             else:
-                log.warning("Found block without a policy: {0}"
-                            .format(block.id))
+                self.log.warning("Found block without a policy: {0}"
+                                 .format(block.id))
                 blocks_without_policy += 1
-        log.info("Cached {0} policy_ids. {1} blocks found without policy."
-                 .format(len(self.policy_ids), blocks_without_policy))
+        self.log.info("Cached {0} policy_ids. {1} blocks found without policy."
+                      .format(len(self.policy_ids), blocks_without_policy))
 
     def migrate_routes(self, block=None):
+        """
+        In [64]: a = netaddr.IPAddress("255.240.0.0")
+        In [65]: netaddr.IPNetwork("192.168.0.0/%s" %
+            (32 - int(math.log(2**32 - a.value, 2))))
+        Out[65]: IPNetwork('192.168.0.0/12')
+        So if the destination address is 192.168.0.0
+        Thats your cidr
+
+        From the notes:
+        create all that exist first
+        - if melange ip_blocks.gateway is not null: 
+            - create one where destination is 0.0.0.0/0 
+                and the gateway is the one from melange ip_blocks.
+            - for ipv6, create one that is 0:0:0:0:0:0:0:0/0 
+                    (check if gateway is the same)
+                - if ip_blocks.gateway is null, leave it alone.
+
+        """
         routes = self.melange_session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
@@ -242,15 +221,14 @@ class Obligator(object):
             if interface in self.interface_network and\
                     self.interface_network[interface] != \
                     trim_br(block.network_id):
-                log.error("Found interface with different "
-                          "network id: {0} != {1}"
-                          .format(self.interface_network[interface],
-                                  trim_br(block.network_id)))
+                self.log.error("Found interface with different "
+                               "network id: {0} != {1}"
+                               .format(self.interface_network[interface],
+                                       trim_br(block.network_id)))
             deallocated = False
             deallocated_at = None
-            """If marked for deallocation put it into the quark ip table
-            as deallocated
-            """
+            # If marked for deallocation
+            #       put it into the quark ip table as deallocated
             if address.marked_for_deallocation == 1:
                 deallocated = True
                 deallocated_at = address.deallocated_at
@@ -258,7 +236,8 @@ class Obligator(object):
             ip_address = netaddr.IPAddress(address.address)
             q_ip = quarkmodels.IPAddress(id=address.id,
                                          created_at=address.created_at,
-                                         tenant_id=block.tenant_id,
+                                         used_by_tenant_id=
+                                         address.used_by_tenant_id,
                                          network_id=
                                          trim_br(block.network_id),
                                          subnet_id=block.id,
@@ -276,7 +255,8 @@ class Obligator(object):
     def migrate_interfaces(self):
         interfaces = self.melange_session.query(melange.Interfaces).all()
         no_network_count = 0
-        for interface in progress.bar(interfaces, label=pad('interfaces')):
+        self.log.critical("NVP_TEMP_KEY needs to be updated.")
+        for interface in interfaces:
             self.init_id("interfaces", interface.id)
             if interface.id not in self.interface_network:
                 self.set_reason("interfaces", interface.id, "no network")
@@ -292,14 +272,18 @@ class Obligator(object):
                                       network_id=network_id)
             self.port_cache[interface.id] = q_port
             self.add_to_session(q_port, "interfaces", q_port.id)
-        log.info("Found {0} interfaces without a network."
-                 .format(str(no_network_count)))
+        self.log.info("Found {0} interfaces without a network."
+                      .format(str(no_network_count)))
 
     def associate_ips_with_ports(self):
-        for port in progress.bar(self.port_cache, label=pad('ports')):
+        """This is a time-consuming little function and begs to be optimized
+        111,600+ iterations @ 1,000 seconds in DFW
+        """
+        for port in self.port_cache:
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
-                q_port.ip_addresses.append(ip)
+                # q_port.ip_addresses.append(ip)
+                pass
 
     def migrate_macs(self):
         """2. Migrate the m.mac_address -> q.quark_mac_addresses
@@ -316,20 +300,23 @@ class Obligator(object):
             cidr, first_address, last_address = to_mac_range(cidr)
         except ValueError as e:
             self.set_reason(mac_range.id, "mac_ranges", e.message)
+            self.log.critical(e.message)
             return None
         except netaddr.AddrFormatError as afe:
             self.set_reason(mac_range.id, "mac_ranges", afe.message)
+            self.log.critical(afe.message)
             return None
         q_range = quarkmodels.MacAddressRange(id=mac_range.id,
                                               cidr=cidr,
                                               created_at=mac_range.created_at,
                                               first_address=first_address,
-                                              next_auto_assign_mac=first_address,  # noqa
+                                              next_auto_assign_mac=
+                                              first_address,
                                               last_address=last_address)
         self.add_to_session(q_range, 'mac_ranges', q_range.id)
         res = self.melange_session.query(melange.MacAddresses).all()
         no_network_count = 0
-        for mac in progress.bar(res, label=pad('macs')):
+        for mac in res:
             self.init_id('macs', mac.address)
             if mac.interface_id not in self.interface_network:
                 no_network_count += 1
@@ -345,16 +332,7 @@ class Obligator(object):
             q_port = self.port_cache[mac.interface_id]
             q_port.mac_address = q_mac.address
             self.add_to_session(q_mac, 'macs', q_mac.address)
-        log.info("skipped {0} mac addresses".format(str(no_network_count)))
-
-    def _octet_to_cidr(self, octet, ipv4_compatible=False):
-        """
-        Convert an ip octet to a ipv6 cidr
-        """
-        ipnet = netaddr.IPNetwork(
-            netaddr.cidr_abbrev_to_verbose(octet)).\
-            ipv6(ipv4_compatible=ipv4_compatible)
-        return str(ipnet.ip)
+        self.log.info("skipped {0} mac addresses".format(str(no_network_count)))  # noqa
 
     def migrate_policies(self):
         """
@@ -362,22 +340,27 @@ class Obligator(object):
 
         We exclude the default policies.  These are octets that are 0 or
         ip ranges that have offset 0 and length 1.
+
+        This is another time-consuming function, but optimization will not
+        yeild as much fruit as optimizing associate_ips_with_ports()
+
+        There is a minute or two of lag while this spins up, may be a way
+        to negate this.
         """
         from uuid import uuid4
         octets = self.melange_session.query(melange.IpOctets).all()
         offsets = self.melange_session.query(melange.IpRanges).all()
-        for policy, policy_block_ids in progress.bar(self.policy_ids.items(),
-                                                     label=pad('policies')):
+        for policy, policy_block_ids in self.policy_ids.items():
             policy_octets = [o.octet for o in octets if o.policy_id == policy]
             policy_rules = [(off.offset, off.length) for off in offsets
                             if off.policy_id == policy]
             policy_rules = make_offset_lengths(policy_octets, policy_rules)
             try:
-                policy_name = self.melange_session.query(
-                    melange.Policies.name).\
+                policy_description = self.melange_session.query(
+                    melange.Policies.description).\
                     filter(melange.Policies.id == policy).first()[0]
             except Exception:
-                policy_name = None
+                policy_description = None
             for block_id in policy_block_ids.keys():
                 policy_uuid = str(uuid4())
                 self.init_id('policies', policy_uuid)
@@ -387,7 +370,8 @@ class Obligator(object):
                 q_ip_policy = quarkmodels.IPPolicy(id=policy_uuid,
                                                    tenant_id=
                                                    q_network.tenant_id,
-                                                   name=policy_name)
+                                                   description=
+                                                   policy_description)
                 q_ip_policy.networks.append(q_network)
                 q_subnet = self.neutron_session.query(quarkmodels.Subnet).\
                     filter(quarkmodels.Subnet.id == block_id).first()
@@ -407,6 +391,7 @@ class Obligator(object):
     def migrate_commit(self):
         """4. Commit the changes to the database"""
         self.neutron_session.commit()
+        self.log.debug("neutron_session.commit() complete.")
 
     def migrate(self):
         """
@@ -427,5 +412,5 @@ class Obligator(object):
                                   self.migrate_policies)
         totes += self.do_and_time("commit changes",
                                   self.migrate_commit)
-        log.info("TOTAL: {0:.2f} seconds.".format(totes))
-        log.debug(colored.yellow("Done."))
+        self.log.info("TOTAL: {0:.2f} seconds.".format(totes))
+        dump_json(self.json_data)

@@ -1,9 +1,112 @@
+import atexit
+import ConfigParser as cfgp
 import datetime
-import logging as log
-# from models import melange
+import json
+import logging
 import os
 from sqlalchemy.orm import sessionmaker
+import subprocess
 import sys
+
+
+def get_basepath():
+    basepath = os.path.dirname(os.path.realpath(__file__))
+    basepath = os.path.abspath(os.path.join(basepath, os.pardir))
+    return basepath
+
+
+log_format = "{} {} {} line {} {}".format('%(asctime)-25s',
+                                          '%(levelname)-8s',
+                                          '%(funcName)-20s',
+                                          '%(lineno)-7s',
+                                          '%(message)-4s')
+log_dateformat = '%m/%d/%Y %I:%M:%S %p'
+file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
+now = datetime.datetime.now()
+basepath = get_basepath()
+filename_format = '{}/logs/obligate.{}.log'\
+    .format(basepath, now.strftime(file_timeformat))
+
+# create the logs directory if it doesn't exist
+if not os.path.exists('{}/logs'.format(basepath)):
+    os.makedirs('{}/logs'.format(basepath))
+
+
+def start_logging(verbose=False):
+    logging.basicConfig(format=log_format,
+                        datefmt=log_dateformat,
+                        filename=filename_format,
+                        filemode='w',
+                        level=logging.DEBUG)
+    root = logging.getLogger()
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(funcName)s(%(lineno)d): %(message)s')
+    console.setFormatter(formatter)
+    if verbose:
+        root.addHandler(console)
+
+ulog = logging.getLogger('obligate.utils')
+basepath = os.path.dirname(os.path.realpath(__file__))
+basepath = os.path.abspath(os.path.join(basepath, os.pardir))
+
+config = cfgp.ConfigParser()
+config_file_path = "{}/.config".format(basepath)
+config.read(config_file_path)
+min_ram_mb = config.get('system_reqs', 'min_ram_mb', '4000')
+migrate_tables = config.get('migration', 'tables', ('networks',
+                                                    'subnets',
+                                                    'routes',
+                                                    'ips',
+                                                    'interfaces',
+                                                    'mac_ranges',
+                                                    'macs',
+                                                    'policies',
+                                                    'policy_rules'))
+migrate_tables = migrate_tables.splitlines()[1:]
+
+
+def _octet_to_cidr(self, octet, ipv4_compatible=False):
+    """
+    Convert an ip octet to a ipv6 cidr
+    This may be dead code, not used anywhere.
+    """
+    ipnet = netaddr.IPNetwork(
+        netaddr.cidr_abbrev_to_verbose(octet)).\
+        ipv6(ipv4_compatible=ipv4_compatible)
+    return str(ipnet.ip)
+
+
+def build_json_structure(tables=migrate_tables):
+    json_data = dict()
+    for table in tables:
+        json_data[table] = {'num migrated': 0,
+                            'ids': dict()}
+    return json_data
+
+
+def dump_json(data):
+    file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
+    now = datetime.datetime.now()
+    filename = 'logs/obligate.{}'.format(now.strftime(file_timeformat))
+    for tablename in migrate_tables:
+        with open('{}.{}.json'.format(filename, tablename), 'wb') as fh:
+            json.dump(data[tablename], fh)
+
+
+def incr_num(json_data, tablename):
+    json_data[tablename]['num migrated'] += 1
+    return json_data
+
+
+def migrate_id(json_data, tablename, id):
+    try:
+        json_data[tablename]['ids'][id]['migrated'] = True
+        json_data[tablename]['ids'][id]['migration count'] -= 1
+        json_data = incr_num(json_data, tablename)
+    except Exception:
+        ulog.error("Key {} not in {}".format(id, tablename))
+    return json_data
 
 
 def trim_br(network_id):
@@ -16,59 +119,21 @@ def pad(label):
     return " " * (20 - len(label)) + label + ': '
 
 
-migrate_tables = ('networks',
-                  'subnets',
-                  'routes',
-                  'ips',
-                  'interfaces',
-                  'mac_ranges',
-                  'macs',
-                  'policies',
-                  'policy_rules')
-
-
-def get_basepath():
-    basepath = os.path.dirname(os.path.realpath(__file__))
-    basepath = os.path.abspath(os.path.join(basepath, os.pardir))
-    return basepath
-
-
-def logit(name):
-    """no doc."""
-    log_format = "{} {}\t{}:{}\t{}".format('%(asctime)s',
-                                           '%(levelname)s',
-                                           '%(funcName)s',
-                                           '%(lineno)d',
-                                           '%(message)s')
-    log_dateformat = '%m/%d/%Y %I:%M:%S %p'
-    file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
-    now = datetime.datetime.now()
-    basepath = get_basepath()
-    filename_format = '{}/logs/obligate.{}.log'\
-        .format(basepath, now.strftime(file_timeformat))
-    # create the logs directory if it doesn't exist
-    if not os.path.exists('{}/logs'.format(basepath)):
-        os.makedirs('{}/logs'.format(basepath))
-    log.basicConfig(format=log_format,
-                    datefmt=log_dateformat,
-                    filename=filename_format,
-                    filemode='w',
-                    level=log.DEBUG)
-    root = log.getLogger(name)
-    ch = log.StreamHandler(sys.stdout)
-    ch.setLevel(log.DEBUG)
-    formatter = log.Formatter(log_format)
-    ch.setFormatter(formatter)
-    root.addHandler(ch)
-    return root
+def has_enough_ram():
+    free = subprocess.Popen(['free', '-m'],
+                            stdout=subprocess.PIPE).communicate()[0].splitlines()  # noqa
+    totes_ram = int(free[1].strip().split()[1])
+    if totes_ram >= int(min_ram_mb):
+        return True
+    return False
 
 
 def loadSession(engine):
     """no doc."""
-    log.debug("Connecting to database {}...".format(engine))
+    ulog.debug("Connecting to database {}...".format(engine))
     Session = sessionmaker(bind=engine)
     session = Session()
-    log.debug("Connected to database {}.".format(engine))
+    ulog.debug("Connected to database {}.".format(engine))
     return session
 
 
@@ -275,6 +340,12 @@ def to_mac_range(val):
     del netaddr
     return cidr, prefix_int, prefix_int + mask_size
 
+
+def done():
+    ulog.info('Done, exiting.')
+    ulog.info('-' * 20)
+
+atexit.register(done)
 
 if __name__ == "__main__":
     import doctest

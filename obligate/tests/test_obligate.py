@@ -20,13 +20,14 @@ from clint.textui import progress
 import ConfigParser as cfgp
 import glob
 import json
+import logging
 from obligate.models import melange, neutron
 from obligate import obligate
-from obligate.utils import logit, loadSession  # get_basepath
+from obligate.utils import loadSession
 from obligate.utils import make_offset_lengths, migrate_tables, pad, trim_br
 import os
 from quark.db import models as quarkmodels
-from sqlalchemy import distinct, func  # noqa
+from sqlalchemy import distinct, func
 import unittest2
 
 
@@ -37,7 +38,7 @@ config = cfgp.ConfigParser()
 config_file_path = "{}/../.config".format(basepath)
 config.read(config_file_path)
 
-migrate_version = config.get('migrate_version', 'version', '6')
+migrate_version = config.get('system_reqs', 'dbversion', '6')
 
 
 class TestMigration(unittest2.TestCase):
@@ -45,7 +46,7 @@ class TestMigration(unittest2.TestCase):
         self.melange_session = loadSession(melange.engine)
         self.neutron_session = loadSession(neutron.engine)
         self.json_data = dict()
-        self.log = logit('obligate.tests')
+        self.log = logging.getLogger('obligate.tests')
 
     def get_scalar(self, pk_name, session, filter=None, is_distinct=False):
         if is_distinct:
@@ -98,7 +99,6 @@ class TestMigration(unittest2.TestCase):
                                                self.neutron_session)
                 migration.flush_db()
                 migration.migrate()
-                migration.dump_json()
                 file = self.get_newest_json_file(table)
             self.log.info("newest json file is {}".format(file))
             data = open(file)
@@ -109,7 +109,7 @@ class TestMigration(unittest2.TestCase):
         exec("self._validate_{}()".format(tablename))
 
     def _validate_networks(self):
-        # get_scalar(column, True) <- True == "disctinct" modifier
+        # get_scalar(column, True) <- True == "distinct" modifier
         blocks_count = self.get_scalar(melange.IpBlocks.network_id,
                                        self.melange_session, [], True)
         networks_count = self.get_scalar(quarkmodels.Network.id,
@@ -168,10 +168,11 @@ class TestMigration(unittest2.TestCase):
         _ipblock = self.melange_session.query(melange.IpBlocks).\
             filter(melange.IpBlocks.id == _ip_addr.ip_block_id).first()
         _q_ip_addr = self.neutron_session.query(quarkmodels.IPAddress).\
-            filter(quarkmodels.IPAddress.id == _ip_addr.id).first()  # noqa
+            filter(quarkmodels.IPAddress.id == _ip_addr.id).first()
         _ip_address = netaddr.IPAddress(_ip_addr.address)
         self.assertEqual(_q_ip_addr.created_at, _ip_addr.created_at)
-        self.assertEqual(_q_ip_addr.tenant_id, _ipblock.tenant_id)
+        self.assertEqual(_q_ip_addr.used_by_tenant_id,
+                         _ip_addr.used_by_tenant_id)
         self.assertEqual(_q_ip_addr.network_id, trim_br(_ipblock.network_id))
         self.assertEqual(_q_ip_addr.subnet_id, _ipblock.id)
         self.assertEqual(_q_ip_addr.version, _ip_address.version)
