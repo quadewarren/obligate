@@ -39,7 +39,7 @@ def start_logging(verbose=False):
                         filemode='w',
                         level=logging.DEBUG)
     root = logging.getLogger()
-    console = logging.StreamHandler(sys.stdout)
+    console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
     console.setFormatter(formatter)
