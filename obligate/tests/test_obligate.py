@@ -16,7 +16,6 @@
 """
 Test the obligate migration: melange -> quark
 """
-from clint.textui import progress
 import ConfigParser as cfgp
 import glob
 import json
@@ -89,7 +88,7 @@ class TestMigration(unittest2.TestCase):
 
     def test_migration(self):
         self.check_version()
-        for table in progress.bar(migrate_tables, label=pad('testing')):
+        for table in migrate_tables:
             file = self.get_newest_json_file(table)
             if not file:
                 self.log.debug("JSON file does not exist,"
