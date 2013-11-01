@@ -41,7 +41,7 @@ def start_logging(verbose=False):
     root = logging.getLogger()
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(funcName)s(%(lineno)d): %(message)s')
     console.setFormatter(formatter)
     if verbose:
         root.addHandler(console)
@@ -64,6 +64,17 @@ migrate_tables = config.get('migration', 'tables', ('networks',
                                                     'policies',
                                                     'policy_rules'))
 migrate_tables = migrate_tables.splitlines()[1:]
+
+
+def _octet_to_cidr(self, octet, ipv4_compatible=False):
+    """
+    Convert an ip octet to a ipv6 cidr
+    This may be dead code, not used anywhere.
+    """
+    ipnet = netaddr.IPNetwork(
+        netaddr.cidr_abbrev_to_verbose(octet)).\
+        ipv6(ipv4_compatible=ipv4_compatible)
+    return str(ipnet.ip)
 
 
 def build_json_structure(tables=migrate_tables):
