@@ -12,7 +12,6 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import gc
 import logging
 from models import melange, neutron
 import netaddr
@@ -25,8 +24,8 @@ from utils import build_json_structure
 from utils import dump_json
 from utils import make_offset_lengths
 from utils import migrate_id
-from utils import pad
 from utils import to_mac_range
+from utils import translate_netmask
 from utils import trim_br
 
 
@@ -103,6 +102,12 @@ class Obligator(object):
             self.commit_tick = 0
             self.migrate_commit()
 
+    def new_to_session(self, item, tablename):
+        # add something brand new to the database
+        self.commit_tick += 1
+        self.json_data[tablename]['num migrated'] += 1
+        self.neutron_session.add(item)
+
     def migrate_networks(self):
         """1. Migrate the m.ip_blocks -> q.quark_networks
 
@@ -162,39 +167,43 @@ class Obligator(object):
                 self.log.warning("Found block without a policy: {0}"
                                  .format(block.id))
                 blocks_without_policy += 1
+        # have to add new routes as well:
+        new_gates = 0
+        for block in blocks:
+            if block.gateway:
+                self.migrate_new_routes(block, 'routes')
+                new_gates += 1
         self.log.info("Cached {0} policy_ids. {1} blocks found without policy."
                       .format(len(self.policy_ids), blocks_without_policy))
+        self.log.info("{} brand new gateways created.".format(new_gates))
 
     def migrate_routes(self, block=None):
-        """
-        In [64]: a = netaddr.IPAddress("255.240.0.0")
-        In [65]: netaddr.IPNetwork("192.168.0.0/%s" %
-            (32 - int(math.log(2**32 - a.value, 2))))
-        Out[65]: IPNetwork('192.168.0.0/12')
-        So if the destination address is 192.168.0.0
-        Thats your cidr
-
-        From the notes:
-        create all that exist first
-        - if melange ip_blocks.gateway is not null: 
-            - create one where destination is 0.0.0.0/0 
-                and the gateway is the one from melange ip_blocks.
-            - for ipv6, create one that is 0:0:0:0:0:0:0:0/0 
-                    (check if gateway is the same)
-                - if ip_blocks.gateway is null, leave it alone.
-
-        """
         routes = self.melange_session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
             self.init_id('routes', route.id)
             q_route = quarkmodels.Route(id=route.id,
-                                        cidr=route.netmask,
+                                        cidr=
+                                        translate_netmask(route.netmask,
+                                                          route.destination),
                                         tenant_id=block.tenant_id,
                                         gateway=route.gateway,
                                         created_at=block.created_at,
                                         subnet_id=block.id)
             self.add_to_session(q_route, 'routes', q_route.id)
+
+    def migrate_new_routes(self, block=None):
+        gateway = netaddr.IPAddress(block.gateway)
+        destination = None
+        if gateway.version == 4:
+            destination = '0.0.0.0/0'  # 3
+        else:
+            destination = '0:0:0:0:0:0:0:0/0'  # 4
+        q_route = quarkmodels.Route(cidr=destination,
+                                    tenant_id=block.tenant_id,
+                                    gateway=block.gateway,
+                                    subnet_id=block.id)
+        self.new_to_session(q_route)
 
     def migrate_ips(self, block=None):
         """3. Migrate m.ip_addresses -> q.quark_ip_addresses
