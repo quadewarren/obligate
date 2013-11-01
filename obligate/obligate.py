@@ -12,6 +12,7 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import gc
 import logging
 from models import melange, neutron
 import netaddr
@@ -19,6 +20,7 @@ from quark.db import models as quarkmodels
 import resource
 import time
 import traceback
+
 from utils import build_json_structure
 from utils import dump_json
 from utils import make_offset_lengths
@@ -26,7 +28,6 @@ from utils import migrate_id
 from utils import pad
 from utils import to_mac_range
 from utils import trim_br
-
 
 
 class Obligator(object):
@@ -172,6 +173,16 @@ class Obligator(object):
         Out[65]: IPNetwork('192.168.0.0/12')
         So if the destination address is 192.168.0.0
         Thats your cidr
+
+        From the notes:
+        create all that exist first
+        - if melange ip_blocks.gateway is not null: 
+            - create one where destination is 0.0.0.0/0 
+                and the gateway is the one from melange ip_blocks.
+            - for ipv6, create one that is 0:0:0:0:0:0:0:0/0 
+                    (check if gateway is the same)
+                - if ip_blocks.gateway is null, leave it alone.
+
         """
         routes = self.melange_session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
@@ -321,16 +332,7 @@ class Obligator(object):
             q_port = self.port_cache[mac.interface_id]
             q_port.mac_address = q_mac.address
             self.add_to_session(q_mac, 'macs', q_mac.address)
-        self.log.info("skipped {0} mac addresses".format(str(no_network_count)))
-
-    def _octet_to_cidr(self, octet, ipv4_compatible=False):
-        """
-        Convert an ip octet to a ipv6 cidr
-        """
-        ipnet = netaddr.IPNetwork(
-            netaddr.cidr_abbrev_to_verbose(octet)).\
-            ipv6(ipv4_compatible=ipv4_compatible)
-        return str(ipnet.ip)
+        self.log.info("skipped {0} mac addresses".format(str(no_network_count)))  # noqa
 
     def migrate_policies(self):
         """
