@@ -1,6 +1,7 @@
 import atexit
 import ConfigParser as cfgp
 import datetime
+import glob
 import json
 import logging
 import math
@@ -65,6 +66,17 @@ migrate_tables = config.get('migration', 'tables', ('networks',
                                                     'policies',
                                                     'policy_rules'))
 migrate_tables = migrate_tables.splitlines()[1:]
+
+
+def clear_logs():
+    # deletes all the log files
+    ulog.info("Clear logfiles requests ('-c')...")
+    logdir = '{}/logs'.format(basepath)
+    if os.path.exists(logdir):
+        files = glob.glob(logdir + '/*')
+        for f in files:
+            os.remove(f)
+            ulog.info("{} deleted.".format(f.split('/')[-1]))
 
 
 def _octet_to_cidr(self, octet, ipv4_compatible=False):
