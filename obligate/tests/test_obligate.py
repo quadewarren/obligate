@@ -23,7 +23,8 @@ import logging
 from obligate.models import melange, neutron
 from obligate import obligate
 from obligate.utils import loadSession
-from obligate.utils import make_offset_lengths, migrate_tables, pad, trim_br
+from obligate.utils import make_offset_lengths, migrate_tables
+from obligate.utils import translate_netmask, trim_br
 import os
 from quark.db import models as quarkmodels
 from sqlalchemy import distinct, func
@@ -149,7 +150,8 @@ class TestMigration(unittest2.TestCase):
             filter(melange.IpBlocks.id == _route.source_block_id).first()
         _qroute = self.neutron_session.query(quarkmodels.Route).\
             filter(quarkmodels.Route.id == _route.id).first()
-        self.assertEqual(_qroute.cidr, _route.netmask)
+        self.assertEqual(_qroute.cidr,
+                         translate_netmask(_route.netmask, _route.destination))
         self.assertEqual(_qroute.tenant_id, _ipblock.tenant_id)
         self.assertEqual(_qroute.gateway, _route.gateway)
         self.assertEqual(_qroute.created_at, _ipblock.created_at)

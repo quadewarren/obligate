@@ -3,10 +3,11 @@ import ConfigParser as cfgp
 import datetime
 import json
 import logging
+import math
+import netaddr
 import os
 from sqlalchemy.orm import sessionmaker
 import subprocess
-import sys
 
 
 def get_basepath():
@@ -41,7 +42,7 @@ def start_logging(verbose=False):
     root = logging.getLogger()
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(funcName)s(%(lineno)d): %(message)s')
+    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(funcName)s(%(lineno)d): %(message)s')  # noqa
     console.setFormatter(formatter)
     if verbose:
         root.addHandler(console)
@@ -109,14 +110,32 @@ def migrate_id(json_data, tablename, id):
     return json_data
 
 
+def translate_netmask(netmask, destination):
+    """
+    In [64]: a = netaddr.IPAddress("255.240.0.0") # <- netmask
+    In [65]: netaddr.IPNetwork("192.168.0.0/%s" %
+        (32 - int(math.log(2**32 - a.value, 2))))
+    Out[65]: IPNetwork('192.168.0.0/12')
+    So if the destination address is 192.168.0.0
+    Thats your cidr
+    """
+    # returns a cidr based on the string arguments
+    if not netmask:
+        ulog.error("No netmask given.")
+    if not destination:
+        ulog.error("No destination given.")
+    try:
+        a = netaddr.IPAddress(netmask)
+        return str(netaddr.IPNetwork("{}/{}".format(destination, 32 - int(math.log(2 ** 32 - a.value, 2)))))  # noqa
+    except Exception:
+        ulog.critical("Could not generate cidr, netmask {} destination {}".
+                      format(netmask, destination))
+
+
 def trim_br(network_id):
     if network_id[:3] == "br-":
         return network_id[3:]
     return network_id
-
-
-def pad(label):
-    return " " * (20 - len(label)) + label + ': '
 
 
 def has_enough_ram():

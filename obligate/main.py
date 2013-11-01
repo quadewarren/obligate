@@ -6,7 +6,7 @@ from models import melange, neutron
 
 def main():
     parser = argparse.ArgumentParser(description='Migrate from Melange to Quark.')  # noqa
-    parser.add_argument('-v', '--verbose',  action='store_true', default=False,
+    parser.add_argument('-v', '--verbose', action='store_true', default=False,
                         help='Log to stdout.', dest='verbose')
     arguments = parser.parse_args()
     start_logging(verbose=arguments.verbose)
