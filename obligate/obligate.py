@@ -173,6 +173,16 @@ class Obligator(object):
         Out[65]: IPNetwork('192.168.0.0/12')
         So if the destination address is 192.168.0.0
         Thats your cidr
+
+        From the notes:
+        create all that exist first
+        - if melange ip_blocks.gateway is not null: 
+            - create one where destination is 0.0.0.0/0 
+                and the gateway is the one from melange ip_blocks.
+            - for ipv6, create one that is 0:0:0:0:0:0:0:0/0 
+                    (check if gateway is the same)
+                - if ip_blocks.gateway is null, leave it alone.
+
         """
         routes = self.melange_session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
