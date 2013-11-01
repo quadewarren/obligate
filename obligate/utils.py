@@ -94,6 +94,7 @@ def build_json_structure(tables=migrate_tables):
     json_data = dict()
     for table in tables:
         json_data[table] = {'num migrated': 0,
+                            'new': 0,
                             'ids': dict()}
     return json_data
 

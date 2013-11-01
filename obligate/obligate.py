@@ -106,6 +106,7 @@ class Obligator(object):
         # add something brand new to the database
         self.commit_tick += 1
         self.json_data[tablename]['num migrated'] += 1
+        self.json_data[tablename]['new'] += 1
         self.neutron_session.add(item)
 
     def migrate_networks(self):
