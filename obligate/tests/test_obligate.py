@@ -68,6 +68,12 @@ class TestMigration(unittest2.TestCase):
                               "but JSON doesn't exist")
         return err_count
 
+    def count_new_migrated(self, tablename):
+        new_count = 0
+        if self.json_data:
+            new_count = self.json_data[tablename]["new"]
+        return new_count
+
     def get_newest_json_file(self, tablename):
         from operator import itemgetter
         import os
@@ -143,8 +149,9 @@ class TestMigration(unittest2.TestCase):
         qroutes = self.get_scalar(quarkmodels.Route.id,
                                   self.neutron_session)
         err_count = self.count_not_migrated("routes")
+        new_count = self.count_new_migrated("routes")
         self._compare_after_migration("Routes", routes - err_count,
-                                      "Routes", qroutes)
+                                      "Routes", qroutes - new_count)
         _route = self.melange_session.query(melange.IpRoutes).first()
         _ipblock = self.melange_session.query(melange.IpBlocks).\
             filter(melange.IpBlocks.id == _route.source_block_id).first()

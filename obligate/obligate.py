@@ -106,6 +106,7 @@ class Obligator(object):
         # add something brand new to the database
         self.commit_tick += 1
         self.json_data[tablename]['num migrated'] += 1
+        self.json_data[tablename]['new'] += 1
         self.neutron_session.add(item)
 
     def migrate_networks(self):
@@ -171,7 +172,7 @@ class Obligator(object):
         new_gates = 0
         for block in blocks:
             if block.gateway:
-                self.migrate_new_routes(block, 'routes')
+                self.migrate_new_routes(block)
                 new_gates += 1
         self.log.info("Cached {0} policy_ids. {1} blocks found without policy."
                       .format(len(self.policy_ids), blocks_without_policy))
@@ -203,7 +204,7 @@ class Obligator(object):
                                     tenant_id=block.tenant_id,
                                     gateway=block.gateway,
                                     subnet_id=block.id)
-        self.new_to_session(q_route)
+        self.new_to_session(q_route, 'routes')
 
     def migrate_ips(self, block=None):
         """3. Migrate m.ip_addresses -> q.quark_ip_addresses
