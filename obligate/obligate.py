@@ -49,6 +49,7 @@ class Obligator(object):
         self.log = logging.getLogger('obligate.obligator')
         self.log.debug("Ram used: {:0.2f}M".format(res / 1024.0))
 
+
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
         self.log.info("start: {}".format(label))
@@ -123,7 +124,7 @@ class Obligator(object):
             self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
         for block in blocks:
-            init_id(, self.json_data, 'subnets', block.id)
+            init_id(self.json_data, 'subnets', block.id)
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=
                                           trim_br(block.network_id),
@@ -385,6 +386,7 @@ class Obligator(object):
         database. Below melange is referred to as m and quark as q.
         """
         totes = 0.0
+        flush_db()
         totes += self.do_and_time("migrate networks, "
                                   "subnets, routes, and ips",
                                   self.migrate_networks)
