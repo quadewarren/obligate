@@ -17,7 +17,6 @@ def main():
     melange_session = loadSession(melange.engine)
     neutron_session = loadSession(neutron.engine)
     migration = Obligator(melange_session, neutron_session)
-    migration.flush_db()
     migration.migrate()
 
 if __name__ == "__main__":
