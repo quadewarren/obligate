@@ -5,8 +5,10 @@ import glob
 import json
 import logging
 import math
+from models import melange, neutron
 import netaddr
 import os
+from quark.db import models as quarkmodels
 from sqlalchemy.orm import sessionmaker
 import subprocess
 
@@ -79,7 +81,13 @@ def clear_logs():
             ulog.info("{} deleted.".format(f.split('/')[-1]))
 
 
-def _octet_to_cidr(self, octet, ipv4_compatible=False):
+def flush_db():
+    quarkmodels.BASEV2.metadata.drop_all(neutron.engine)
+    quarkmodels.BASEV2.metadata.create_all(neutron.engine)
+    ulog.debug("flush_db() complete.")
+
+
+def _octet_to_cidr(octet, ipv4_compatible=False):
     """
     Convert an ip octet to a ipv6 cidr
     This may be dead code, not used anywhere.
@@ -88,6 +96,32 @@ def _octet_to_cidr(self, octet, ipv4_compatible=False):
         netaddr.cidr_abbrev_to_verbose(octet)).\
         ipv6(ipv4_compatible=ipv4_compatible)
     return str(ipnet.ip)
+
+
+def init_id(json_data, tablename, id, num_exp=1):
+    """
+    initially set the id in the table
+    Each id gets a dictionary.
+    If id is migrated, it is set to true and the migration count
+    increases on subsequent migrations.
+    If an exception occurs at any point, a reason is populated
+    Unsuccessful migrations replace the None with a reason string.
+    """
+    try:
+        json_data[tablename]['ids'][id] = {'migrated': False,
+                                           'migration count': num_exp,
+                                           'reason': None}
+    except Exception:
+        ulog.error("Inserting {} on {} failed.".format(id, tablename),
+                   exc_info=True)
+
+
+def set_reason(json_data, tablename, id, reason):
+    try:
+        json_data[tablename]['ids'][id]['reason'] = reason
+    except Exception:
+        ulog.error("Key {} not in {}"
+                   " (tried reason {})".format(id, tablename, reason))
 
 
 def build_json_structure(tables=migrate_tables):

@@ -22,8 +22,11 @@ import traceback
 
 from utils import build_json_structure
 from utils import dump_json
+from utils import flush_db
+from utils import init_id
 from utils import make_offset_lengths
 from utils import migrate_id
+from utils import set_reason
 from utils import to_mac_range
 from utils import translate_netmask
 from utils import trim_br
@@ -46,34 +49,6 @@ class Obligator(object):
         self.log = logging.getLogger('obligate.obligator')
         self.log.debug("Ram used: {:0.2f}M".format(res / 1024.0))
 
-    def init_id(self, tablename, id, num_exp=1):
-        """
-        initially set the id in the table
-        Each id gets a dictionary.
-        If id is migrated, it is set to true and the migration count
-        increases on subsequent migrations.
-        If an exception occurs at any point, a reason is populated
-        Unsuccessful migrations replace the None with a reason string.
-        """
-        try:
-            self.json_data[tablename]['ids'][id] = {'migrated': False,
-                                                    'migration count': num_exp,
-                                                    'reason': None}
-        except Exception:
-            self.log.error("Inserting {} on {} failed.".format(id, tablename),
-                           exc_info=True)
-
-    def set_reason(self, tablename, id, reason):
-        try:
-            self.json_data[tablename]['ids'][id]['reason'] = reason
-        except Exception:
-            self.log.error("Key {} not in {}"
-                           " (tried reason {})".format(id, tablename, reason))
-
-    def flush_db(self):
-        quarkmodels.BASEV2.metadata.drop_all(neutron.engine)
-        quarkmodels.BASEV2.metadata.create_all(neutron.engine)
-        self.log.debug("flush_db() complete.")
 
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
@@ -125,7 +100,7 @@ class Obligator(object):
         """Create the networks using the network_id. It is assumed that
         a network can only belong to one tenant"""
         for block in blocks:
-            self.init_id('networks', trim_br(block.network_id))
+            init_id(self.json_data, 'networks', trim_br(block.network_id))
             if trim_br(block.network_id) not in networks:
                 networks[trim_br(block.network_id)] = {
                     "tenant_id": block.tenant_id,
@@ -138,7 +113,8 @@ class Obligator(object):
                         block.network_id)]["tenant_id"],
                         block.tenant_id)
                 self.log.critical(r)
-                self.set_reason('networks', trim_br(block.network_id), r)
+                set_reason(self.json_data, 'networks',
+                           trim_br(block.network_id), r)
                 raise Exception
         for net in networks:
             q_network = quarkmodels.Network(id=net,
@@ -148,7 +124,7 @@ class Obligator(object):
             self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
         for block in blocks:
-            self.init_id('subnets', block.id)
+            init_id(self.json_data, 'subnets', block.id)
             q_subnet = quarkmodels.Subnet(id=block.id,
                                           network_id=
                                           trim_br(block.network_id),
@@ -182,7 +158,7 @@ class Obligator(object):
         routes = self.melange_session.query(melange.IpRoutes)\
             .filter_by(source_block_id=block.id).all()
         for route in routes:
-            self.init_id('routes', route.id)
+            init_id(self.json_data, 'routes', route.id)
             q_route = quarkmodels.Route(id=route.id,
                                         cidr=
                                         translate_netmask(route.netmask,
@@ -221,7 +197,7 @@ class Obligator(object):
         addresses = self.melange_session.query(melange.IpAddresses)\
             .filter_by(ip_block_id=block.id).all()
         for address in addresses:
-            self.init_id('ips', address.id)
+            init_id(self.json_data, 'ips', address.id)
             """Populate interface_network cache"""
             interface = address.interface_id
             if interface is not None and\
@@ -267,9 +243,10 @@ class Obligator(object):
         no_network_count = 0
         self.log.critical("NVP_TEMP_KEY needs to be updated.")
         for interface in interfaces:
-            self.init_id("interfaces", interface.id)
+            init_id(self.json_data, "interfaces", interface.id)
             if interface.id not in self.interface_network:
-                self.set_reason("interfaces", interface.id, "no network")
+                set_reason(self.json_data, "interfaces",
+                           interface.id, "no network")
                 no_network_count += 1
                 continue
             network_id = self.interface_network[interface.id]
@@ -305,15 +282,15 @@ class Obligator(object):
         mac_range = self.melange_session.query(
             melange.MacAddressRanges).first()
         cidr = mac_range.cidr
-        self.init_id('mac_ranges', mac_range.id)
+        init_id(self.json_data, 'mac_ranges', mac_range.id)
         try:
             cidr, first_address, last_address = to_mac_range(cidr)
         except ValueError as e:
-            self.set_reason(mac_range.id, "mac_ranges", e.message)
+            set_reason(self.json_data, mac_range.id, "mac_ranges", e.message)
             self.log.critical(e.message)
             return None
         except netaddr.AddrFormatError as afe:
-            self.set_reason(mac_range.id, "mac_ranges", afe.message)
+            set_reason(self.json_data, mac_range.id, "mac_ranges", afe.message)
             self.log.critical(afe.message)
             return None
         q_range = quarkmodels.MacAddressRange(id=mac_range.id,
@@ -327,12 +304,12 @@ class Obligator(object):
         res = self.melange_session.query(melange.MacAddresses).all()
         no_network_count = 0
         for mac in res:
-            self.init_id('macs', mac.address)
+            init_id(self.json_data, 'macs', mac.address)
             if mac.interface_id not in self.interface_network:
                 no_network_count += 1
                 r = "mac.interface_id {0} not in self.interface_network"\
                     .format(mac.interface_id)
-                self.set_reason('macs', mac.address, r)
+                set_reason(self.json_data, 'macs', mac.address, r)
                 continue
             tenant_id = self.interface_tenant[mac.interface_id]
             q_mac = quarkmodels.MacAddress(tenant_id=tenant_id,
@@ -373,7 +350,7 @@ class Obligator(object):
                 policy_description = None
             for block_id in policy_block_ids.keys():
                 policy_uuid = str(uuid4())
-                self.init_id('policies', policy_uuid)
+                init_id(self.json_data, 'policies', policy_uuid)
                 q_network = self.neutron_session.query(quarkmodels.Network).\
                     filter(quarkmodels.Network.id ==
                            policy_block_ids[block_id]).first()
@@ -389,7 +366,7 @@ class Obligator(object):
                 self.add_to_session(q_ip_policy, 'policies', policy_uuid)
                 for rule in policy_rules:
                     offset_uuid = str(uuid4())
-                    self.init_id('policy_rules', offset_uuid)
+                    init_id(self.json_data, 'policy_rules', offset_uuid)
                     q_ip_policy_rule = quarkmodels.\
                         IPPolicyRange(id=offset_uuid,
                                       offset=rule[0],
@@ -409,6 +386,7 @@ class Obligator(object):
         database. Below melange is referred to as m and quark as q.
         """
         totes = 0.0
+        flush_db()
         totes += self.do_and_time("migrate networks, "
                                   "subnets, routes, and ips",
                                   self.migrate_networks)
