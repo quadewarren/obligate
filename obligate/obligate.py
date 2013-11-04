@@ -105,6 +105,7 @@ class Obligator(object):
                 networks[trim_br(block.network_id)] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
+                    "max_allocation": block.max_allocation,
                 }
             elif networks[trim_br(
                     block.network_id)]["tenant_id"] != block.tenant_id:
@@ -117,10 +118,12 @@ class Obligator(object):
                            trim_br(block.network_id), r)
                 raise Exception
         for net in networks:
+            cache_net = networks[net]
             q_network = quarkmodels.Network(id=net,
-                                            tenant_id=
-                                            networks[net]["tenant_id"],
-                                            name=networks[net]["name"])
+                                            tenant_id= cache_net["tenant_id"],
+                                            name=cache_net["name"],
+                                            max_allocation=cache_net
+                                            ["max_allocation"])
             self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
         for block in blocks:
