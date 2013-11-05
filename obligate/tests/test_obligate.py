@@ -103,7 +103,6 @@ class TestMigration(unittest2.TestCase):
                                format(table))
                 migration = obligate.Obligator(self.melange_session,
                                                self.neutron_session)
-                migration.flush_db()
                 migration.migrate()
                 file = self.get_newest_json_file(table)
             self.log.info("newest json file is {}".format(file))
