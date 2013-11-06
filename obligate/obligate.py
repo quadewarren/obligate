@@ -106,7 +106,11 @@ class Obligator(object):
                 networks[trim_br(block.network_id)] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
-                    "max_allocation": block.max_allocation}
+                    "max_allocation": block.max_allocation,
+                    "created_at": block.created_at}
+            elif trim_br(block.network_id) in networks:
+                if networks[trim_br(block.network_id)]["created_at"] > block.created_at:
+                    networks[trim_br(block.network_id)]["created_at"] = block.created_at
             elif networks[trim_br(
                     block.network_id)]["tenant_id"] != block.tenant_id:
                 r = "Found different tenant on network:{0} != {1}"\
@@ -170,8 +174,7 @@ class Obligator(object):
                                         tenant_id=block.tenant_id,
                                         gateway=route.gateway,
                                         created_at=block.created_at,
-                                        subnet_id=block.id,
-                                        created_at=route.created_at)
+                                        subnet_id=block.id)
             self.add_to_session(q_route, 'routes', q_route.id)
 
     def migrate_new_routes(self, block=None):
