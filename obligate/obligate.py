@@ -12,6 +12,7 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from datetime import datetime as dt
 import logging
 from models import melange, neutron
 import netaddr
@@ -105,8 +106,7 @@ class Obligator(object):
                 networks[trim_br(block.network_id)] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
-                    "max_allocation": block.max_allocation,
-                }
+                    "max_allocation": block.max_allocation}
             elif networks[trim_br(
                     block.network_id)]["tenant_id"] != block.tenant_id:
                 r = "Found different tenant on network:{0} != {1}"\
@@ -120,10 +120,10 @@ class Obligator(object):
         for net in networks:
             cache_net = networks[net]
             q_network = quarkmodels.Network(id=net,
-                                            tenant_id= cache_net["tenant_id"],
+                                            tenant_id=cache_net["tenant_id"],
                                             name=cache_net["name"],
-                                            max_allocation=cache_net
-                                            ["max_allocation"])
+                                            max_allocation=
+                                            cache_net["max_allocation"])
             self.add_to_session(q_network, 'networks', net)
         blocks_without_policy = 0
         for block in blocks:
@@ -133,7 +133,8 @@ class Obligator(object):
                                           trim_br(block.network_id),
                                           tenant_id=block.tenant_id,
                                           cidr=block.cidr,
-                                          do_not_use=block.omg_do_not_use)
+                                          do_not_use=block.omg_do_not_use,
+                                          created_at=block.created_at)
             self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             self.migrate_ips(block=block)
             self.migrate_routes(block=block)
@@ -169,7 +170,8 @@ class Obligator(object):
                                         tenant_id=block.tenant_id,
                                         gateway=route.gateway,
                                         created_at=block.created_at,
-                                        subnet_id=block.id)
+                                        subnet_id=block.id,
+                                        created_at=route.created_at)
             self.add_to_session(q_route, 'routes', q_route.id)
 
     def migrate_new_routes(self, block=None):
@@ -182,7 +184,8 @@ class Obligator(object):
         q_route = quarkmodels.Route(cidr=destination,
                                     tenant_id=block.tenant_id,
                                     gateway=block.gateway,
-                                    subnet_id=block.id)
+                                    subnet_id=block.id,
+                                    created_at=dt.utcnow())
         self.new_to_session(q_route, 'routes')
 
     def migrate_ips(self, block=None):
@@ -345,6 +348,18 @@ class Obligator(object):
             policy_rules = [(off.offset, off.length) for off in offsets
                             if off.policy_id == policy]
             policy_rules = make_offset_lengths(policy_octets, policy_rules)
+            a = [o.created_at for o in octets if o.policy_id == policy]
+            b = [off.created_at for off in offsets if off.policy_id == policy]
+        
+            try:
+                oct_created_at = min(a)
+            except Exception:
+                oct_created_at = dt.utcnow()
+            try:
+                ran_created_at = min(b)
+            except Exception:
+                ran_created_at = dt.utcnow()
+            min_created_at = min([oct_created_at, ran_created_at])
             try:
                 policy_description = self.melange_session.query(
                     melange.Policies.description).\
@@ -361,7 +376,9 @@ class Obligator(object):
                                                    tenant_id=
                                                    q_network.tenant_id,
                                                    description=
-                                                   policy_description)
+                                                   policy_description,
+                                                   created_at=
+                                                   min_created_at)
                 q_ip_policy.networks.append(q_network)
                 q_subnet = self.neutron_session.query(quarkmodels.Subnet).\
                     filter(quarkmodels.Subnet.id == block_id).first()
@@ -374,7 +391,8 @@ class Obligator(object):
                         IPPolicyRange(id=offset_uuid,
                                       offset=rule[0],
                                       length=rule[1],
-                                      ip_policy_id=policy_uuid)
+                                      ip_policy_id=policy_uuid,
+                                      created_at=min_created_at)
                     self.add_to_session(q_ip_policy_rule, 'policy_rules',
                                         offset_uuid)
 
