@@ -106,7 +106,11 @@ class Obligator(object):
                 networks[trim_br(block.network_id)] = {
                     "tenant_id": block.tenant_id,
                     "name": block.network_name,
-                    "max_allocation": block.max_allocation}
+                    "max_allocation": block.max_allocation,
+                    "created_at": block.created_at}
+            elif trim_br(block.network_id) in networks:
+                if networks[trim_br(block.network_id)]["created_at"] > block.created_at:
+                    networks[trim_br(block.network_id)]["created_at"] = block.created_at
             elif networks[trim_br(
                     block.network_id)]["tenant_id"] != block.tenant_id:
                 r = "Found different tenant on network:{0} != {1}"\
