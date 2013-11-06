@@ -170,7 +170,8 @@ class Obligator(object):
                                         tenant_id=block.tenant_id,
                                         gateway=route.gateway,
                                         created_at=block.created_at,
-                                        subnet_id=block.id)
+                                        subnet_id=block.id,
+                                        created_at=route.created_at)
             self.add_to_session(q_route, 'routes', q_route.id)
 
     def migrate_new_routes(self, block=None):
@@ -184,7 +185,7 @@ class Obligator(object):
                                     tenant_id=block.tenant_id,
                                     gateway=block.gateway,
                                     subnet_id=block.id,
-                                    created_at=block.created_at)
+                                    created_at=dt.utcnow())
         self.new_to_session(q_route, 'routes')
 
     def migrate_ips(self, block=None):
