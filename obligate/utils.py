@@ -58,7 +58,8 @@ config = cfgp.ConfigParser()
 config_file_path = "{}/.config".format(basepath)
 config.read(config_file_path)
 min_ram_mb = config.get('system_reqs', 'min_ram_mb', '4000')
-migrate_tables = config.get('migration', 'tables', ('networks',
+migrate_tables = config.get('migration', 'tables', ('',
+                                                    'networks',
                                                     'subnets',
                                                     'routes',
                                                     'ips',

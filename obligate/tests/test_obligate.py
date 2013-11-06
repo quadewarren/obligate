@@ -96,17 +96,12 @@ class TestMigration(unittest2.TestCase):
     def test_migration(self):
         self.check_version()
         for table in migrate_tables:
-            file = self.get_newest_json_file(table)
-            if not file:
-                self.log.debug("JSON file does not exist,"
-                               " for table {} re-running migration".
-                               format(table))
-                migration = obligate.Obligator(self.melange_session,
-                                               self.neutron_session)
-                migration.migrate()
-                file = self.get_newest_json_file(table)
-            self.log.info("newest json file is {}".format(file))
-            data = open(file)
+            migration = obligate.Obligator(self.melange_session,
+                                           self.neutron_session)
+            migration.migrate()
+            jfile = self.get_newest_json_file(table)
+            self.log.info("newest json file is {}".format(jfile))
+            data = open(jfile)
             self.json_data.update({table: json.load(data)})
             self._validate_migration(table)
 
