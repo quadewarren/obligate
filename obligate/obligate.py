@@ -144,11 +144,13 @@ class Obligator(object):
             self.add_to_session(q_subnet, 'subnets', q_subnet.id)
             q_dns1 = quarkmodels.DNSNameserver(tenant_id=block.tenant_id,
                                                created_at=block.created_at,
-                                               ip=block.dns1,
+                                               ip=
+                                               int(netaddr.IPAddress(block.dns1)),
                                                subnet_id=q_subnet.id)
             q_dns2 = quarkmodels.DNSNameserver(tenant_id=block.tenant_id,
                                                created_at=block.created_at,
-                                               ip=block.dns2,
+                                               ip=
+                                               int(netaddr.IPAddress(block.dns2)),
                                                subnet_id=q_subnet.id)
             self.new_to_session(q_dns1)
             self.new_to_session(q_dns2)
