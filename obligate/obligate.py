@@ -50,7 +50,6 @@ class Obligator(object):
         self.log = logging.getLogger('obligate.obligator')
         self.log.debug("Ram used: {:0.2f}M".format(res / 1024.0))
 
-
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
         self.log.info("start: {}".format(label))
@@ -78,11 +77,12 @@ class Obligator(object):
             self.commit_tick = 0
             self.migrate_commit()
 
-    def new_to_session(self, item, tablename):
+    def new_to_session(self, item, tablename=None):
         # add something brand new to the database
         self.commit_tick += 1
-        self.json_data[tablename]['num migrated'] += 1
-        self.json_data[tablename]['new'] += 1
+        if tablename:
+            self.json_data[tablename]['num migrated'] += 1
+            self.json_data[tablename]['new'] += 1
         self.neutron_session.add(item)
 
     def migrate_networks(self):
@@ -109,8 +109,10 @@ class Obligator(object):
                     "max_allocation": block.max_allocation,
                     "created_at": block.created_at}
             elif trim_br(block.network_id) in networks:
-                if networks[trim_br(block.network_id)]["created_at"] > block.created_at:
-                    networks[trim_br(block.network_id)]["created_at"] = block.created_at
+                if networks[trim_br(block.network_id)]["created_at"]\
+                    > block.created_at:
+                    networks[trim_br(block.network_id)]["created_at"]\
+                        = block.created_at
             elif networks[trim_br(
                     block.network_id)]["tenant_id"] != block.tenant_id:
                 r = "Found different tenant on network:{0} != {1}"\
@@ -140,6 +142,16 @@ class Obligator(object):
                                           do_not_use=block.omg_do_not_use,
                                           created_at=block.created_at)
             self.add_to_session(q_subnet, 'subnets', q_subnet.id)
+            q_dns1 = quarkmodels.DNSNameserver(tenant_id=block.tenant_id,
+                                               created_at=block.created_at,
+                                               ip=block.dns1,
+                                               subnet_id=q_subnet.id)
+            q_dns2 = quarkmodels.DNSNameserver(tenant_id=block.tenant_id,
+                                               created_at=block.created_at,
+                                               ip=block.dns2,
+                                               subnet_id=q_subnet.id)
+            self.new_to_session(q_dns1)
+            self.new_to_session(q_dns2)
             self.migrate_ips(block=block)
             self.migrate_routes(block=block)
             # caching policy_ids for use in migrate_policies
