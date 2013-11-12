@@ -292,8 +292,8 @@ class Obligator(object):
         for port in self.port_cache:
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
-                # q_port.ip_addresses.append(ip)
-                pass
+                q_port.ip_addresses.append(ip)
+                # pass
 
     def migrate_macs(self):
         """2. Migrate the m.mac_address -> q.quark_mac_addresses
