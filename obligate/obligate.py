@@ -14,7 +14,7 @@
 # limitations under the License.
 from datetime import datetime as dt
 import logging
-from models import melange, neutron
+from models import melange, neutron  # noqa
 import netaddr
 from quark.db import models as quarkmodels
 import resource
@@ -109,10 +109,8 @@ class Obligator(object):
                     "max_allocation": block.max_allocation,
                     "created_at": block.created_at}
             elif trim_br(block.network_id) in networks:
-                if networks[trim_br(block.network_id)]["created_at"]\
-                    > block.created_at:
-                    networks[trim_br(block.network_id)]["created_at"]\
-                        = block.created_at
+                if networks[trim_br(block.network_id)]["created_at"] > block.created_at:  # noqa
+                    networks[trim_br(block.network_id)]["created_at"] = block.created_at  # noqa
             elif networks[trim_br(
                     block.network_id)]["tenant_id"] != block.tenant_id:
                 r = "Found different tenant on network:{0} != {1}"\
@@ -145,12 +143,12 @@ class Obligator(object):
             q_dns1 = quarkmodels.DNSNameserver(tenant_id=block.tenant_id,
                                                created_at=block.created_at,
                                                ip=
-                                               int(netaddr.IPAddress(block.dns1)),
+                                               int(netaddr.IPAddress(block.dns1)),  # noqa
                                                subnet_id=q_subnet.id)
             q_dns2 = quarkmodels.DNSNameserver(tenant_id=block.tenant_id,
                                                created_at=block.created_at,
                                                ip=
-                                               int(netaddr.IPAddress(block.dns2)),
+                                               int(netaddr.IPAddress(block.dns2)),  # noqa
                                                subnet_id=q_subnet.id)
             self.new_to_session(q_dns1)
             self.new_to_session(q_dns2)
@@ -255,7 +253,7 @@ class Obligator(object):
                                          deallocated_at=deallocated_at,
                                          _deallocated=deallocated,
                                          address=int(ip_address.ipv6()))
-            """Populate interface_ip cache"""
+            # Populate interface_ip cache
             if interface not in self.interface_ip:
                 self.interface_ip[interface] = set()
             self.interface_ip[interface].add(q_ip)
@@ -293,7 +291,6 @@ class Obligator(object):
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
                 q_port.ip_addresses.append(ip)
-                # pass
 
     def migrate_macs(self):
         """2. Migrate the m.mac_address -> q.quark_mac_addresses
@@ -367,7 +364,7 @@ class Obligator(object):
             policy_rules = make_offset_lengths(policy_octets, policy_rules)
             a = [o.created_at for o in octets if o.policy_id == policy]
             b = [off.created_at for off in offsets if off.policy_id == policy]
-        
+
             try:
                 oct_created_at = min(a)
             except Exception:
