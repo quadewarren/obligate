@@ -243,9 +243,10 @@ class TestMigration(unittest2.TestCase):
         _q_mac_address = self.neutron_session.query(quarkmodels.MacAddress).\
             filter(quarkmodels.MacAddress.address == _mac_address.address).\
             first()
-        self.assertEqual(_q_mac_address.tenant_id, _interface.tenant_id)
-        self.assertEqual(_q_mac_address.created_at, _mac_address.created_at)
-        self.assertEqual(_q_mac_address.address, _mac_address.address)
+        if _interface and _mac_address and _q_mac_address:
+            self.assertEqual(_q_mac_address.tenant_id, _interface.tenant_id)
+            self.assertEqual(_q_mac_address.created_at, _mac_address.created_at)  # noqa
+            self.assertEqual(_q_mac_address.address, _mac_address.address)
 
     def _validate_policies(self):
         blocks_count = self.get_scalar(melange.IpBlocks.id,
