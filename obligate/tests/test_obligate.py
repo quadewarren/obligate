@@ -203,12 +203,12 @@ class TestMigration(unittest2.TestCase):
         _networks = _network_filter.all()
         _port = self.neutron_session.query(quarkmodels.Port).\
             filter(quarkmodels.Port.id == _interface.id).first()
-        if _port:
+        if _port and _interface and _networks:
             self.assertEqual(_port.device_id, _interface.device_id)
             self.assertEqual(_port.tenant_id, _interface.tenant_id)
             self.assertEqual(_port.created_at, _interface.created_at)
             self.assertEqual(_port.backend_key, "NVP_TEMP_KEY")
-            self.assertTrue(_port.network_id in [n.network_id for n in _networks])
+            self.assertTrue(_port.network_id in [n.network_id for n in _networks])  # noqa
 
     def _validate_mac_ranges(self):
         mac_ranges_count = self.get_scalar(melange.MacAddressRanges.id,
