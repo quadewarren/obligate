@@ -14,12 +14,14 @@
 # limitations under the License.
 from datetime import datetime as dt
 import logging
-from models import melange, neutron
+from models import melange
 import netaddr
 from quark.db import models as quarkmodels
+from quark.drivers import optimized_nvp_driver as optdriver
 import resource
 import time
 import traceback
+from uuid import uuid4
 
 from utils import build_json_structure
 from utils import dump_json
@@ -280,8 +282,21 @@ class Obligator(object):
                                       created_at=interface.created_at,
                                       backend_key="NVP_TEMP_KEY",
                                       network_id=network_id)
+            lswitch_id = str(uuid4())
+            
+            q_nvp_switch = optdriver.LSwitch(id=lswitch_id,
+                                             nvp_id=network_id,
+                                             network_id=network_id,
+                                             display_name=network_id)
+            port_id = interface.vif_id_on_device
+            if not port_id:
+                port_id = "NVP_TEMP_KEY"
+            q_nvp_port = optdriver.LSwitchPort(port_id=port_id,
+                                               switch_id=lswitch_id)
             self.port_cache[interface.id] = q_port
             self.add_to_session(q_port, "interfaces", q_port.id)
+            self.add_to_session(q_nvp_switch, "switch", q_nvp_switch.id)
+            self.add_to_session(q_nvp_port, "nvp_port", q_nvp_port.id)
         self.log.info("Found {0} interfaces without a network."
                       .format(str(no_network_count)))
 
@@ -357,7 +372,6 @@ class Obligator(object):
         There is a minute or two of lag while this spins up, may be a way
         to negate this.
         """
-        from uuid import uuid4
         octets = self.melange_session.query(melange.IpOctets).all()
         offsets = self.melange_session.query(melange.IpRanges).all()
         for policy, policy_block_ids in self.policy_ids.items():
