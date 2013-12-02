@@ -12,3 +12,4 @@ logs/
 .tox/
 *.egg*/
 .config
+src/
