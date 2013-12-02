@@ -21,7 +21,7 @@ basepath = os.path.dirname(os.path.realpath(__file__))
 basepath = os.path.abspath(os.path.join(basepath, os.pardir))
 
 config = cfgp.ConfigParser()
-config_file_path = "{}/../.config".format(basepath)
+config_file_path = "{0}/../.config".format(basepath)
 config.read(config_file_path)
 
 username = config.get('source_db', 'user', 'changeuserinconfig')
@@ -29,7 +29,7 @@ password = config.get('source_db', 'password', 'changepasswordinconfig')
 location = config.get('source_db', 'location', 'changelocationinconfig')
 dbname = config.get('source_db', 'dbname', 'changedatabasenameinconfig')
 
-engine = create_engine("mysql://{}:{}@{}/{}".
+engine = create_engine("mysql://{0}:{1}@{2}/{3}".
                        format(username, password, location, dbname),
                        echo=False)
 

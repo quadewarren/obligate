@@ -35,7 +35,7 @@ basepath = os.path.dirname(os.path.realpath(__file__))
 basepath = os.path.abspath(os.path.join(basepath, os.pardir))
 
 config = cfgp.ConfigParser()
-config_file_path = "{}/../.config".format(basepath)
+config_file_path = "{0}/../.config".format(basepath)
 config.read(config_file_path)
 
 migrate_version = config.get('system_reqs', 'dbversion', '6')
@@ -77,7 +77,7 @@ class TestMigration(unittest2.TestCase):
     def get_newest_json_file(self, tablename):
         from operator import itemgetter
         import os
-        files = glob.glob('logs/*{}.json'.format(tablename))
+        files = glob.glob('logs/*{0}.json'.format(tablename))
         filetimes = dict()
         for f in files:
             filetimes.update({f: os.stat(f).st_mtime})
@@ -100,7 +100,7 @@ class TestMigration(unittest2.TestCase):
         migration.migrate()
         for table in migrate_tables:
             jfile = self.get_newest_json_file(table)
-            self.log.info("newest json file is {}".format(jfile))
+            self.log.info("newest json file is {0}".format(jfile))
             data = open(jfile)
             self.log.info("json file opened.")
             self.json_data.update({table: json.load(data)})
@@ -109,7 +109,7 @@ class TestMigration(unittest2.TestCase):
             self.log.info("data validated.")
 
     def _validate_migration(self, tablename):
-        exec("self._validate_{}()".format(tablename))
+        exec("self._validate_{0}()".format(tablename))
 
     def _validate_networks(self):
         # get_scalar(column, True) <- True == "distinct" modifier
@@ -319,7 +319,7 @@ class TestMigration(unittest2.TestCase):
 
     def _compare_after_migration(self, melange_type, melange_count,
                                  quark_type, quark_count):
-        message = "The number of Melange {} ({}) does " \
-                  "not equal the number of Quark {} ({})".\
+        message = "The number of Melange {0} ({1}) does " \
+                  "not equal the number of Quark {2} ({3})".\
                   format(melange_type, melange_count, quark_type, quark_count)
         self.assertEqual(melange_count, quark_count, message)

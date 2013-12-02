@@ -50,25 +50,25 @@ class Obligator(object):
         self.json_data = build_json_structure()
         res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         self.log = logging.getLogger('obligate.obligator')
-        self.log.debug("Ram used: {:0.2f}M".format(res / 1024.0))
+        self.log.debug("Ram used: {0:0.2f}M".format(res / 1024.0))
 
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
-        self.log.info("start: {}".format(label))
+        self.log.info("start: {0}".format(label))
         try:
             fx(**kwargs)
         except Exception as e:
             self.error_free = False
             self.log.critical("Error during"
-                              " {}:{}\n{}".format(label,
-                                                  e.message,
-                                                  traceback.format_exc()))
+                              " {0}:{1}\n{2}".format(label,
+                                                     e.message,
+                                                     traceback.format_exc()))
         end_time = time.time()
-        self.log.info("end  : {}".format(label))
-        self.log.info("delta: {} = {:.2f} seconds".format(label,
-                                                          end_time - start_time))  # noqa
+        self.log.info("end  : {0}".format(label))
+        self.log.info("delta: {0} = {1:.2f} seconds".format(label,
+                                                            end_time - start_time))  # noqa
         res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        self.log.debug("Ram used: {:0.2f}M".format(res / 1000.0))
+        self.log.debug("Ram used: {0:0.2f}M".format(res / 1000.0))
         return end_time - start_time
 
     def add_to_session(self, item, tablename, id):
@@ -174,7 +174,7 @@ class Obligator(object):
                 new_gates += 1
         self.log.info("Cached {0} policy_ids. {1} blocks found without policy."
                       .format(len(self.policy_ids), blocks_without_policy))
-        self.log.info("{} brand new gateways created.".format(new_gates))
+        self.log.info("{0} brand new gateways created.".format(new_gates))
 
     def migrate_routes(self, block=None):
         routes = self.melange_session.query(melange.IpRoutes)\
@@ -281,7 +281,6 @@ class Obligator(object):
                                       backend_key="NVP_TEMP_KEY",
                                       network_id=network_id)
             lswitch_id = str(uuid4())
-            
             q_nvp_switch = optdriver.LSwitch(id=lswitch_id,
                                              nvp_id=network_id,
                                              network_id=network_id,
