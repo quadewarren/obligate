@@ -293,7 +293,7 @@ class Obligator(object):
                 # self.log.critical("NVP_TEMP_KEY needs to be updated.")
                 good_device_ids.append(k)
         for interface in interfaces_all:
-            if interface.device_id not in good_device_ids:
+            if interface.device_id in good_device_ids:
                 init_id(self.json_data, "interfaces", interface.id)
                 if interface.id not in self.interface_network:
                     set_reason(self.json_data, "interfaces",
