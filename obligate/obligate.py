@@ -50,7 +50,7 @@ class Obligator(object):
         self.melange_session = melange_sess
         self.neutron_session = neutron_sess
         self.json_data = build_json_structure()
-        res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss # ram check
         self.log = logging.getLogger('obligate.obligator')
         self.log.debug("Ram used: {0:0.2f}M".format(res / 1024.0))
         
