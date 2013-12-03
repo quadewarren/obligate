@@ -33,7 +33,9 @@ from utils import set_reason
 from utils import to_mac_range
 from utils import translate_netmask
 from utils import trim_br
+from utils import get_connection_creds
 
+import query
 
 class Obligator(object):
     def __init__(self, melange_sess=None, neutron_sess=None):
@@ -51,6 +53,7 @@ class Obligator(object):
         res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         self.log = logging.getLogger('obligate.obligator')
         self.log.debug("Ram used: {0:0.2f}M".format(res / 1024.0))
+        
 
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
@@ -262,38 +265,54 @@ class Obligator(object):
             self.add_to_session(q_ip, 'ips', q_ip.id)
 
     def migrate_interfaces(self):
-        interfaces = self.melange_session.query(melange.Interfaces).all()
+        env = 'ordpreprod'
+        creds = get_connection_creds(env)
+        nova = query.Nova(creds['nova_url'], creds['nova_username'],
+                          creds['nova_password'])
+        melange = query.Melange(creds['melange_url'], creds['melange_username'],
+                                creds['melange_password'])
+        # grab all instances from nova
+        instances = nova.get_instances_hashed_by_id()
+        # grab all interfaces from melange
+        interfaces_good = melange.get_interfaces_hashed_by_device_id()
+        interfaces_all = self.melange_session.query(melange.Interfaces).all()
         no_network_count = 0
-        self.log.critical("NVP_TEMP_KEY needs to be updated.")
-        for interface in interfaces:
-            init_id(self.json_data, "interfaces", interface.id)
-            if interface.id not in self.interface_network:
-                set_reason(self.json_data, "interfaces",
-                           interface.id, "no network")
-                no_network_count += 1
-                continue
-            network_id = self.interface_network[interface.id]
-            self.interface_tenant[interface.id] = interface.tenant_id
-            q_port = quarkmodels.Port(id=interface.id,
-                                      device_id=interface.device_id,
-                                      tenant_id=interface.tenant_id,
-                                      created_at=interface.created_at,
-                                      backend_key="NVP_TEMP_KEY",
-                                      network_id=network_id)
-            lswitch_id = str(uuid4())
-            q_nvp_switch = optdriver.LSwitch(id=lswitch_id,
-                                             nvp_id=network_id,
-                                             network_id=network_id,
-                                             display_name=network_id)
-            port_id = interface.vif_id_on_device
-            if not port_id:
-                port_id = "NVP_TEMP_KEY"
-            q_nvp_port = optdriver.LSwitchPort(port_id=port_id,
-                                               switch_id=lswitch_id)
-            self.port_cache[interface.id] = q_port
-            self.add_to_session(q_port, "interfaces", q_port.id)
-            self.add_to_session(q_nvp_switch, "switch", q_nvp_switch.id)
-            self.add_to_session(q_nvp_port, "nvp_port", q_nvp_port.id)
+        for k, v in interfaces_good.iteritems():
+            if k in instances:
+                # this is not a garbage interface
+                # print 'interface device_id |%s| found in nova!!' % k
+                # self.log.critical("NVP_TEMP_KEY needs to be updated.")
+                for interface in interfaces_all:
+                    init_id(self.json_data, "interfaces", interface.id)
+                    if interface.id not in self.interface_network:
+                        set_reason(self.json_data, "interfaces",
+                                   interface.id, "no network")
+                        no_network_count += 1
+                        continue
+                    network_id = self.interface_network[interface.id]
+                    self.interface_tenant[interface.id] = interface.tenant_id
+                    q_port = quarkmodels.Port(id=interface.id,
+                                              device_id=interface.device_id,
+                                              tenant_id=interface.tenant_id,
+                                              created_at=interface.created_at,
+                                              backend_key=
+                                              interface.vif_id_on_device,
+                                              network_id=network_id)
+                    lswitch_id = str(uuid4())
+                    q_nvp_switch = optdriver.LSwitch(id=lswitch_id,
+                                                     nvp_id=network_id,
+                                                     network_id=network_id,
+                                                     display_name=network_id)
+                    port_id = interface.vif_id_on_device
+                    if not port_id:
+                        port_id = "NVP_TEMP_KEY"
+                    q_nvp_port = optdriver.LSwitchPort(port_id=port_id,
+                                                       switch_id=lswitch_id)
+                    self.port_cache[interface.id] = q_port
+                    self.add_to_session(q_port, "interfaces", q_port.id)
+                    self.add_to_session(q_nvp_switch, "switch",
+                                        q_nvp_switch.id)
+                    self.add_to_session(q_nvp_port, "nvp_port", q_nvp_port.id)
         self.log.info("Found {0} interfaces without a network."
                       .format(str(no_network_count)))
 
