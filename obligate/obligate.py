@@ -37,12 +37,12 @@ from utils import get_connection_creds
 
 import query
 
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-                    datefmt='%m-%d %H:%M',
-                    filename='sqlalchemy.log',
-                    filemode='w')
-logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+#logging.basicConfig(level=logging.DEBUG,
+#                    format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+#                    datefmt='%m-%d %H:%M',
+#                    filename='sqlalchemy.log',
+#                    filemode='w')
+#logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 
 class Obligator(object):
@@ -277,17 +277,17 @@ class Obligator(object):
         creds = get_connection_creds(env)
         nova = query.Nova(creds['nova_url'], creds['nova_username'],
                           creds['nova_password'])
-        melange = query.Melange(creds['melange_url'], creds['melange_username'],
+        melanged = query.Melange(creds['melange_url'], creds['melange_username'],
                                 creds['melange_password'])
         # grab all instances from nova
         instances = nova.get_instances_hashed_by_id()
         # grab all interfaces from melange
-        interfaces_good = melange.get_interfaces_hashed_by_device_id()
+        interfaces_good = melanged.get_interfaces_hashed_by_device_id()
         interfaces_all = self.melange_session.query(melange.Interfaces).all()
         no_network_count = 0
         good_device_ids = []
         for k, v in interfaces_good.iteritems():
-            if k in instances:
+            if k not in instances:
                 # this is not a garbage interface
                 # print 'interface device_id |%s| found in nova!!' % k
                 # self.log.critical("NVP_TEMP_KEY needs to be updated.")
@@ -330,11 +330,14 @@ class Obligator(object):
     def associate_ips_with_ports(self):
         """This is a time-consuming little function and begs to be optimized
         111,600+ iterations @ 1,000 seconds in DFW
-        """
-        for port in self.port_cache:
-            q_port = self.port_cache[port]
-            for ip in self.interface_ip[port]:
+        """ 
+        for id, q_port in self.port_cache.iteritems():
+            self.log.debug("ID: {}".format(id))
+            self.log.debug("q_port: {}".format(q_port))
+            for ip in self.interface_ip[id]:
+                self.log.debug("\tip: {}".format(ip))
                 q_port.ip_addresses.append(ip)
+
 
     def migrate_macs(self):
         """2. Migrate the m.mac_address -> q.quark_mac_addresses
