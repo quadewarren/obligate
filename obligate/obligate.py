@@ -50,25 +50,25 @@ class Obligator(object):
         self.json_data = build_json_structure()
         res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         self.log = logging.getLogger('obligate.obligator')
-        self.log.debug("Ram used: {:0.2f}M".format(res / 1024.0))
+        self.log.debug("Ram used: {0:0.2f}M".format(res / 1024.0))
 
     def do_and_time(self, label, fx, **kwargs):
         start_time = time.time()
-        self.log.info("start: {}".format(label))
+        self.log.info("start: {0}".format(label))
         try:
             fx(**kwargs)
         except Exception as e:
             self.error_free = False
             self.log.critical("Error during"
-                              " {}:{}\n{}".format(label,
-                                                  e.message,
-                                                  traceback.format_exc()))
+                              " {0}:{1}\n{2}".format(label,
+                                                     e.message,
+                                                     traceback.format_exc()))
         end_time = time.time()
-        self.log.info("end  : {}".format(label))
-        self.log.info("delta: {} = {:.2f} seconds".format(label,
-                                                          end_time - start_time))  # noqa
+        self.log.info("end  : {0}".format(label))
+        self.log.info("delta: {0} = {1:.2f} seconds".format(label,
+                                                            end_time - start_time))  # noqa
         res = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        self.log.debug("Ram used: {:0.2f}M".format(res / 1000.0))
+        self.log.debug("Ram used: {0:0.2f}M".format(res / 1000.0))
         return end_time - start_time
 
     def add_to_session(self, item, tablename, id):
@@ -111,10 +111,8 @@ class Obligator(object):
                     "max_allocation": block.max_allocation,
                     "created_at": block.created_at}
             elif trim_br(block.network_id) in networks:
-                if networks[trim_br(block.network_id)]["created_at"]\
-                    > block.created_at:
-                    networks[trim_br(block.network_id)]["created_at"]\
-                        = block.created_at
+                if networks[trim_br(block.network_id)]["created_at"] > block.created_at:  # noqa
+                    networks[trim_br(block.network_id)]["created_at"] = block.created_at  # noqa
             elif networks[trim_br(
                     block.network_id)]["tenant_id"] != block.tenant_id:
                 r = "Found different tenant on network:{0} != {1}"\
@@ -147,12 +145,12 @@ class Obligator(object):
             q_dns1 = quarkmodels.DNSNameserver(tenant_id=block.tenant_id,
                                                created_at=block.created_at,
                                                ip=
-                                               int(netaddr.IPAddress(block.dns1)),
+                                               int(netaddr.IPAddress(block.dns1)),  # noqa
                                                subnet_id=q_subnet.id)
             q_dns2 = quarkmodels.DNSNameserver(tenant_id=block.tenant_id,
                                                created_at=block.created_at,
                                                ip=
-                                               int(netaddr.IPAddress(block.dns2)),
+                                               int(netaddr.IPAddress(block.dns2)),  # noqa
                                                subnet_id=q_subnet.id)
             self.new_to_session(q_dns1)
             self.new_to_session(q_dns2)
@@ -176,7 +174,7 @@ class Obligator(object):
                 new_gates += 1
         self.log.info("Cached {0} policy_ids. {1} blocks found without policy."
                       .format(len(self.policy_ids), blocks_without_policy))
-        self.log.info("{} brand new gateways created.".format(new_gates))
+        self.log.info("{0} brand new gateways created.".format(new_gates))
 
     def migrate_routes(self, block=None):
         routes = self.melange_session.query(melange.IpRoutes)\
@@ -257,7 +255,7 @@ class Obligator(object):
                                          deallocated_at=deallocated_at,
                                          _deallocated=deallocated,
                                          address=int(ip_address.ipv6()))
-            """Populate interface_ip cache"""
+            # Populate interface_ip cache
             if interface not in self.interface_ip:
                 self.interface_ip[interface] = set()
             self.interface_ip[interface].add(q_ip)
@@ -283,7 +281,6 @@ class Obligator(object):
                                       backend_key="NVP_TEMP_KEY",
                                       network_id=network_id)
             lswitch_id = str(uuid4())
-            
             q_nvp_switch = optdriver.LSwitch(id=lswitch_id,
                                              nvp_id=network_id,
                                              network_id=network_id,
@@ -307,8 +304,7 @@ class Obligator(object):
         for port in self.port_cache:
             q_port = self.port_cache[port]
             for ip in self.interface_ip[port]:
-                # q_port.ip_addresses.append(ip)
-                pass
+                q_port.ip_addresses.append(ip)
 
     def migrate_macs(self):
         """2. Migrate the m.mac_address -> q.quark_mac_addresses
@@ -381,7 +377,7 @@ class Obligator(object):
             policy_rules = make_offset_lengths(policy_octets, policy_rules)
             a = [o.created_at for o in octets if o.policy_id == policy]
             b = [off.created_at for off in offsets if off.policy_id == policy]
-        
+
             try:
                 oct_created_at = min(a)
             except Exception:

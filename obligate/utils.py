@@ -19,21 +19,21 @@ def get_basepath():
     return basepath
 
 
-log_format = "{} {} {} line {} {}".format('%(asctime)-25s',
-                                          '%(levelname)-8s',
-                                          '%(funcName)-20s',
-                                          '%(lineno)-7s',
-                                          '%(message)-4s')
+log_format = "{0} {1} {2} line {3} {4}".format('%(asctime)-25s',
+                                               '%(levelname)-8s',
+                                               '%(funcName)-20s',
+                                               '%(lineno)-7s',
+                                               '%(message)-4s')
 log_dateformat = '%m/%d/%Y %I:%M:%S %p'
 file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
 now = datetime.datetime.now()
 basepath = get_basepath()
-filename_format = '{}/logs/obligate.{}.log'\
+filename_format = '{0}/logs/obligate.{1}.log'\
     .format(basepath, now.strftime(file_timeformat))
 
 # create the logs directory if it doesn't exist
-if not os.path.exists('{}/logs'.format(basepath)):
-    os.makedirs('{}/logs'.format(basepath))
+if not os.path.exists('{0}/logs'.format(basepath)):
+    os.makedirs('{0}/logs'.format(basepath))
 
 
 def start_logging(verbose=False):
@@ -55,7 +55,7 @@ basepath = os.path.dirname(os.path.realpath(__file__))
 basepath = os.path.abspath(os.path.join(basepath, os.pardir))
 
 config = cfgp.ConfigParser()
-config_file_path = "{}/.config".format(basepath)
+config_file_path = "{0}/.config".format(basepath)
 config.read(config_file_path)
 min_ram_mb = config.get('system_reqs', 'min_ram_mb', '4000')
 migrate_tables = config.get('migration', 'tables', ('',
@@ -74,12 +74,12 @@ migrate_tables = migrate_tables.splitlines()[1:]
 def clear_logs():
     # deletes all the log files
     ulog.info("Clear logfiles requests ('-c')...")
-    logdir = '{}/logs'.format(basepath)
+    logdir = '{0}/logs'.format(basepath)
     if os.path.exists(logdir):
         files = glob.glob(logdir + '/*')
         for f in files:
             os.remove(f)
-            ulog.info("{} deleted.".format(f.split('/')[-1]))
+            ulog.info("{0} deleted.".format(f.split('/')[-1]))
 
 
 def flush_db():
@@ -113,7 +113,7 @@ def init_id(json_data, tablename, id, num_exp=1):
                                            'migration count': num_exp,
                                            'reason': None}
     except Exception:
-        ulog.error("Inserting {} on {} failed.".format(id, tablename),
+        ulog.error("Inserting {0} on {1} failed.".format(id, tablename),
                    exc_info=True)
 
 
@@ -121,8 +121,8 @@ def set_reason(json_data, tablename, id, reason):
     try:
         json_data[tablename]['ids'][id]['reason'] = reason
     except Exception:
-        ulog.error("Key {} not in {}"
-                   " (tried reason {})".format(id, tablename, reason))
+        ulog.error("Key {0} not in {1}"
+                   " (tried reason {2})".format(id, tablename, reason))
 
 
 def build_json_structure(tables=migrate_tables):
@@ -137,9 +137,9 @@ def build_json_structure(tables=migrate_tables):
 def dump_json(data):
     file_timeformat = "%A-%d-%B-%Y--%I.%M.%S.%p"
     now = datetime.datetime.now()
-    filename = 'logs/obligate.{}'.format(now.strftime(file_timeformat))
+    filename = 'logs/obligate.{0}'.format(now.strftime(file_timeformat))
     for tablename in migrate_tables:
-        with open('{}.{}.json'.format(filename, tablename), 'wb') as fh:
+        with open('{0}.{1}.json'.format(filename, tablename), 'wb') as fh:
             json.dump(data[tablename], fh)
 
 
@@ -154,7 +154,7 @@ def migrate_id(json_data, tablename, id):
         json_data[tablename]['ids'][id]['migration count'] -= 1
         json_data = incr_num(json_data, tablename)
     except Exception:
-        ulog.error("Key {} not in {}".format(id, tablename))
+        ulog.error("Key {0} not in {1}".format(id, tablename))
     return json_data
 
 
@@ -174,9 +174,9 @@ def translate_netmask(netmask, destination):
         ulog.error("No destination given.")
     try:
         a = netaddr.IPAddress(netmask)
-        return str(netaddr.IPNetwork("{}/{}".format(destination, 32 - int(math.log(2 ** 32 - a.value, 2)))))  # noqa
+        return str(netaddr.IPNetwork("{0}/{1}".format(destination, 32 - int(math.log(2 ** 32 - a.value, 2)))))  # noqa
     except Exception:
-        ulog.critical("Could not generate cidr, netmask {} destination {}".
+        ulog.critical("Could not generate cidr, netmask {0} destination {1}".
                       format(netmask, destination))
 
 
@@ -197,10 +197,10 @@ def has_enough_ram():
 
 def loadSession(engine):
     """no doc."""
-    ulog.debug("Connecting to database {}...".format(engine))
+    ulog.debug("Connecting to database {0}...".format(engine))
     Session = sessionmaker(bind=engine)
     session = Session()
-    ulog.debug("Connected to database {}.".format(engine))
+    ulog.debug("Connected to database {0}.".format(engine))
     return session
 
 
@@ -400,8 +400,8 @@ def to_mac_range(val):
     try:
         cidr = "%s/%s" % (str(netaddr.EUI(prefix)).replace("-", ":"), mask)
     except netaddr.AddrFormatError as e:
-        r = "{} raised netaddr.AddrFormatError: ".format(prefix)
-        r += "{}... ignoring.".format(e.message)
+        r = "{0} raised netaddr.AddrFormatError: ".format(prefix)
+        r += "{0}... ignoring.".format(e.message)
         raise netaddr.AddrFormatError(r)
     prefix_int = int(prefix, base=16)
     del netaddr
