@@ -37,6 +37,14 @@ from utils import get_connection_creds
 
 import query
 
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                    datefmt='%m-%d %H:%M',
+                    filename='sqlalchemy.log',
+                    filemode='w')
+logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+
+
 class Obligator(object):
     def __init__(self, melange_sess=None, neutron_sess=None):
         self.commit_tick = 0
@@ -265,7 +273,7 @@ class Obligator(object):
             self.add_to_session(q_ip, 'ips', q_ip.id)
 
     def migrate_interfaces(self):
-        env = 'ordpreprod'
+        env = 'preprodord'
         creds = get_connection_creds(env)
         nova = query.Nova(creds['nova_url'], creds['nova_username'],
                           creds['nova_password'])
